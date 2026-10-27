@@ -1,0 +1,82 @@
+{
+  "id": "EPEN",
+  "nombre": "EPEN - Ente Provincial de Energía del Neuquén",
+  "cliente": "ENTE PROVINCIAL DE ENERGÍA DEL NEUQUÉN",
+  "fuentes": [
+    "Ejemplos/ETAP-0722-ET-CT-MC-LI-6209-1-Lista señales - CAO.xlsx",
+    "Reglas/LISTADO DE SEÑALES-LINEAMIENTOS-Epen.pdf"
+  ],
+  "hojas": {
+    "caratula": "Caratula",
+    "listado": "EPEN",
+    "total": 2,
+    "fila_encabezado": 5,
+    "primera_fila_datos": 6
+  },
+  "orden_funciones": ["ALARMAS", "SEÑALIZACION", "COMANDO", "MEDICION"],
+  "largos": {
+    "desc_scada": 20,
+    "desc_hmi": null,
+    "tag_hmi": null
+  },
+  "offset": {
+    "contador_por": "tipo_punto",
+    "pregunta_inicio": true,
+    "comando_comparte_offset_con_senalizacion": true
+  },
+  "item": {
+    "pregunta_inicio": true,
+    "comando_sin_item_si_comparte_tag": "a confirmar (en el ejemplo algunos comandos no llevan ITEM)"
+  },
+  "tag": {
+    "patron": "{nivel}{campo}.{variable}{bits}{comando}",
+    "patron_medicion": "{nivel}{campo}.{variable}{codigo_medicion}",
+    "digitos_variable": 2,
+    "bits_validos": [1, 2],
+    "sufijo_comando": "C",
+    "campos_especiales_sin_nivel": true,
+    "tags_no_estandar_en_ejemplo": ["SACC.01V48", "UTR02T_132", "N/A (reservas)"],
+    "niveles": { "3": "132kV", "2": "33kV", "1": "13,2kV" },
+    "campos_especiales": {
+      "TP1": "Campo transformador 1",
+      "TP2": "Campo transformador 2",
+      "RN1": "Campo Reactor de Neutro 1",
+      "RN2": "Campo Reactor de Neutro 2",
+      "SAA": "Servicios Auxiliares de Alterna",
+      "SAC": "Servicios Auxiliares de Continua",
+      "SACA": "Servicios Auxiliares de Alterna (grafía del ejemplo ETAP, no figura en el PDF)",
+      "SACC": "Servicios Auxiliares de Continua (grafía del ejemplo ETAP, no figura en el PDF)",
+      "UTR": "UTR (del ejemplo ETAP, no figura en el PDF)"
+    },
+    "pendiente": [
+      "En el ejemplo los campos especiales aparecen sin dígito de nivel (TP1.431). Confirmar si reemplazan a nivel+campo.",
+      "Fórmula exacta de 'variable' y de 'bits' para señalización con comando."
+    ]
+  },
+  "niveles_comunes": ["132KV", "33KV", "13,2KV", "6,6KV", "SSAA", "Comunicaciones", "General"],
+  "columnas": [
+    { "clave": "item", "letra": "A", "titulo": "ITEM", "activa": true },
+    { "clave": "nivel", "letra": "B", "titulo": "NIVEL", "activa": true },
+    { "clave": "descrip", "letra": "C", "titulo": "DESCRIP", "activa": true },
+    { "clave": "controlador", "letra": "D", "titulo": "CONTROLADOR/DISPOSITIVO DE CAMPO", "activa": true },
+    { "clave": "funcion", "letra": "E", "titulo": "FUNCION", "activa": true },
+    { "clave": "tag_hmi", "letra": "F", "titulo": "HMI SEL / TAG", "activa": true },
+    { "clave": "desc_hmi", "letra": "G", "titulo": "HMI SEL / DESC. HMI SEL", "activa": true },
+    { "clave": "tag_scada", "letra": "H", "titulo": "SCADA CENTRO DE CONTROL / TAG", "activa": true },
+    { "clave": "offset", "letra": "I", "titulo": "OFFSET", "activa": true },
+    { "clave": "desc_scada", "letra": "J", "titulo": "DESC. SCADA", "activa": true },
+    { "clave": "s0", "letra": "K", "titulo": "S0 / MIN RAW", "activa": true },
+    { "clave": "s1", "letra": "L", "titulo": "S1 / MAX RAW", "activa": true },
+    { "clave": "s2", "letra": "M", "titulo": "S2 / MIN EU", "activa": true },
+    { "clave": "s3", "letra": "N", "titulo": "S3 / MAX EU", "activa": true },
+    { "clave": "unidad", "letra": "O", "titulo": "UNITS", "activa": true },
+    { "clave": "tipo_punto", "letra": "P", "titulo": "UTR / TIPO DE SEÑALIZACION", "activa": true },
+    { "clave": "protocolo", "letra": "Q", "titulo": "PROTOCOLO COMUNICACIÓN", "activa": false },
+    { "clave": "pos_dnp", "letra": "R", "titulo": "POS DNP DCA/ DATASET MMS", "activa": false },
+    { "clave": "placa", "letra": "S", "titulo": "PLACA ENTRADA", "activa": true },
+    { "clave": "entrada", "letra": "T", "titulo": "ENTRADA", "activa": true },
+    { "clave": "bornera", "letra": "U", "titulo": "BORNERA EQUIPO", "activa": false },
+    { "clave": "borne", "letra": "V", "titulo": "N* DE BORNE EQUIPO", "activa": false },
+    { "clave": "observaciones", "letra": "W", "titulo": "DESCRIPCION / OBSERVACIONES", "activa": true }
+  ]
+}

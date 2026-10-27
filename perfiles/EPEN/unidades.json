@@ -1,0 +1,8 @@
+{
+  "digitales": "N/A",
+  "analogicas": ["KV", "A", "Hz", "MW", "MVA", "Mvar", "V", "ºC"],
+  "pendiente": [
+    "El usuario mencionó 'MV' además de MW; confirmar si existe.",
+    "Grafía exacta: el ejemplo mezcla KV/kV y ºC. Se propone la del primer ejemplo (KV, ºC)."
+  ]
+}

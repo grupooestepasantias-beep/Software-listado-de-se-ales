@@ -1,0 +1,42 @@
+{
+  "fuente": "LISTADO DE SEÑALES-LINEAMIENTOS-Epen.pdf, página 3 (DESCRIPCION SCADA, máx. 20 caracteres)",
+  "estructura_desc_scada": "{nivel}{campo}{descripcion}  - ej. 301LAVALINTF/UAUX = nivel 3 (132kV), campo 01, 'LAVAL' + 'INT' + 'F/UAUX'",
+  "nivel": { "3": "132kV", "2": "33kV", "1": "13,2kV" },
+  "campo": {
+    "LXXXX": "Hacia donde mira la línea",
+    "GTR01": "General de Trafo 1",
+    "GTR02": "General de Trafo 2",
+    "ACOBA": "Acoplamiento barra A",
+    "ACOBB": "Acoplamiento barra B",
+    "ACOLO": "Acoplamiento longitudinal de barra",
+    "TRAFO1": "Transformador 1",
+    "TRAFO2": "Transformador 2",
+    "RN01": "Reactor de neutro 1",
+    "RN02": "Reactor de neutro 2",
+    "SACA": "Servicios Auxiliares Alterna",
+    "SACC": "Servicios Auxiliares Continua"
+  },
+  "equipo": {
+    "INT": "Interruptor",
+    "SBA": "Seccionador barra A",
+    "SBB": "Seccionador barra B",
+    "ST": "Seccionador de tierra",
+    "RAT": "Regulador automático de tensión",
+    "CBC": null,
+    "IT3": "Imagen térmica 132kV"
+  },
+  "alarma": {
+    "F/U AUX": "Falta tensión auxiliar",
+    "DIS": "Disparo",
+    "*": "Otros: abreviatura autodescriptiva"
+  },
+  "medicion": {
+    "I F/R": "Corriente fase R",
+    "V F/U": "Tensión fase R"
+  },
+  "estados_y_comandos": "Sin descripción (usar la abreviatura del estado, ver estados.json)",
+  "pendiente": [
+    "CBC figura sin significado en el PDF.",
+    "Lista completa de abreviaturas de alarma: el PDF da solo ejemplos."
+  ]
+}
