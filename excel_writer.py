@@ -17,6 +17,8 @@ from openpyxl.formatting.rule import Rule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.styles.colors import Color
 from openpyxl.styles.differential import DifferentialStyle
+from openpyxl.utils import column_index_from_string
+from openpyxl.worksheet.cell_range import CellRange
 from openpyxl.worksheet.properties import PageSetupProperties
 
 from modelo import Proyecto, Senal
@@ -108,23 +110,28 @@ def _valor(clave: str, s: Senal, item: int, nivel, campo) -> object:
     return getattr(s, clave, None)
 
 
-def _escribir_listado(ws, proyecto: Proyecto, perfil: Perfil, t: dict) -> int:
+def _escribir_listado(ws, proyecto: Proyecto, perfil: Perfil, t: dict, omitir: frozenset = frozenset(),
+                      hasta: Optional[str] = None) -> int:
     hojas = perfil.datos["hojas"]
     primera = hojas["primera_fila_datos"]
     enc = hojas["fila_encabezado"]
-    activas = perfil.columnas_activas
+    limite = column_index_from_string(hasta) if hasta else 10 ** 6  # columnas más allá de `hasta` no se escriben
+    dentro = lambda letra: column_index_from_string(letra) <= limite  # noqa: E731
+    activas = [c for c in perfil.columnas_activas if dentro(c["letra"])]
     letra_de = {c["clave"]: c["letra"] for c in perfil.columnas}
 
-    _anchos(ws, t["columnas"])
+    _anchos(ws, {k: v for k, v in t["columnas"].items() if dentro(k)})
     for r, h in t["alturas_filas"].items():
         ws.row_dimensions[int(r)].height = h
     for r, fila in t["encabezado"].items():
         for letra, cel in fila.items():
-            c = ws[f"{letra}{r}"]
-            c.value = cel["v"]
-            aplicar_estilo(c, cel)
+            if dentro(letra):
+                c = ws[f"{letra}{r}"]
+                c.value = cel["v"]
+                aplicar_estilo(c, cel)
     for m in t["merges_encabezado"]:
-        ws.merge_cells(m)
+        if CellRange(m).max_col <= limite:
+            ws.merge_cells(m)
 
     estilo_dato = t["estilo_filas_datos"][str(primera)]
     alto = t["alturas_filas"].get(str(primera))
@@ -149,7 +156,9 @@ def _escribir_listado(ws, proyecto: Proyecto, perfil: Perfil, t: dict) -> int:
                 f_func = s.funcion
                 for col in activas:
                     cel = ws[f"{col['letra']}{fila}"]
-                    cel.value = _valor(col["clave"], s, item, nivel, campo)
+                    if col["clave"] not in omitir:  # columnas de una etapa posterior (ej. SCADA): quedan vacías
+                        v = _valor(col["clave"], s, item, nivel, campo)
+                        cel.value = None if v == "" else v
                     aplicar_estilo(cel, estilo_dato[col["letra"]])
                 if alto:
                     ws.row_dimensions[fila].height = alto
@@ -167,15 +176,17 @@ def _escribir_listado(ws, proyecto: Proyecto, perfil: Perfil, t: dict) -> int:
 
     ultima = max(fila - 1, primera)  # sin señales el rango queda en la primera fila de datos
     if t["autofiltro"]:
-        ws.auto_filter.ref = _con_fila_final(t["autofiltro"], ultima)
+        ref = _con_fila_final(t["autofiltro"], ultima)
+        ws.auto_filter.ref = re.sub(r"[A-Z]+(\d+)$", rf"{hasta}\1", ref) if hasta else ref
     if t["area_impresion"]:
-        ws.print_area = _con_fila_final(t["area_impresion"].split("!")[-1].replace("$", ""), ultima)
+        area = _con_fila_final(t["area_impresion"].split("!")[-1].replace("$", ""), ultima)
+        ws.print_area = re.sub(r"[A-Z]+(\d+)$", rf"{hasta}\1", area) if hasta else area
     if t["titulos_repetir_filas"]:
         ws.print_title_rows = t["titulos_repetir_filas"].replace("$", "")
     _pagina(ws, t)
 
     # valores duplicados en DESC. SCADA (misma regla visual que el ejemplo)
-    if t["formato_condicional"] and "desc_scada" in letra_de and fila > primera:
+    if t["formato_condicional"] and "desc_scada" in letra_de and fila > primera and dentro(letra_de["desc_scada"]):
         regla = t["formato_condicional"][0]
         dxf = DifferentialStyle(fill=PatternFill(bgColor=_color(regla["dxf_fill"])))
         L = letra_de["desc_scada"]
@@ -283,10 +294,13 @@ def _pagina_caratula(ws, t: dict) -> None:
 
 # ---------------------------------------------------------------- API
 def escribir_xlsx(proyecto: Proyecto, perfil: Perfil, ruta: Union[str, Path],
-                  plantilla: Optional[dict] = None, incluir_caratula: bool = True) -> Path:
+                  plantilla: Optional[dict] = None, incluir_caratula: bool = True,
+                  omitir_claves=(), hasta_columna: Optional[str] = None) -> Path:
     """Genera el .xlsx (hoja de carátula + hoja del listado) y devuelve la ruta escrita.
 
-    Con incluir_caratula=False el libro lleva solo la hoja del listado."""
+    Con incluir_caratula=False el libro lleva solo la hoja del listado. `omitir_claves` = claves de
+    columnas (perfil) que no se escriben (quedan vacías, con su formato). `hasta_columna` = última letra
+    que se escribe (ej. "G": el listado sale solo con las columnas A-G)."""
     t = plantilla or cargar_plantilla(perfil)
     hojas = perfil.datos["hojas"]
     wb = Workbook()
@@ -298,7 +312,7 @@ def escribir_xlsx(proyecto: Proyecto, perfil: Perfil, ruta: Union[str, Path],
     else:
         ws_lis = wb.active
         ws_lis.title = hojas["listado"]
-    _escribir_listado(ws_lis, proyecto, perfil, t["listado"])
+    _escribir_listado(ws_lis, proyecto, perfil, t["listado"], frozenset(omitir_claves), hasta_columna)
     ruta = Path(ruta)
     ruta.parent.mkdir(parents=True, exist_ok=True)
     wb.save(ruta)

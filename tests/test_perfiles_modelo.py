@@ -21,15 +21,6 @@ class TestPerfiles(unittest.TestCase):
         inactivas = {c["clave"] for c in p.columnas if not c["activa"]}
         self.assertEqual(inactivas, {"protocolo", "pos_dnp", "bornera", "borne"})
 
-    def test_estados_y_sufijos(self):
-        p = perfiles.cargar_perfil("EPEN")
-        e = p.estado("sen_ab_ce")
-        self.assertEqual((e["s0"], e["s1"], e["s2"], e["s3"]), ("error_0", "AB", "CE", "error_1"))
-        self.assertTrue(all(x["tipo_punto"] == "DO" for x in p.estados_para("COMANDO")))
-        self.assertEqual(len(p.sufijos("AS")), 2)  # corriente fase S y potencia aparente
-        with self.assertRaises(KeyError):
-            p.estado("no_existe")
-
     def test_perfil_inexistente(self):
         with self.assertRaises(perfiles.PerfilInvalido):
             perfiles.cargar_perfil("NO_EXISTE")
@@ -40,7 +31,7 @@ class TestPerfiles(unittest.TestCase):
             import shutil
             shutil.copytree(perfiles.RAIZ / "EPEN", raiz / "EPEN")
             destino = perfiles.duplicar_perfil("EPEN", "OTRO", "Cliente Otro", raiz)
-            self.assertTrue((destino / "estados.json").is_file())
+            self.assertTrue((destino / "perfil.json").is_file())
             nuevo = perfiles.cargar_perfil("OTRO", raiz)
             self.assertEqual(nuevo.nombre, "Cliente Otro")
             self.assertEqual(sorted(perfiles.listar_perfiles(raiz)), ["EPEN", "OTRO"])

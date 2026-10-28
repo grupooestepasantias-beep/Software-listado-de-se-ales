@@ -16,8 +16,8 @@ Suele cambiar
 preguntar
 - [ ] ¿Cuál cuenta/PC es PC-A y cuál PC-B?
 La PC-A es el usuario AD.GO\Pasante2 y la PC-B es el AD.GO\Pasante3. (La contraseña se quitó de este archivo para que no llegue a GitHub; la tiene el usuario.)
-- [ ] (PC-B) ¿Las filas de doble bit (señalización con 2 filas, p. ej. "Abierto" y "Cerrado") se modelan como 2 `Senal` (la 2ª sin tag/desc. scada) o como 1 con ambas? El ejemplo las escribe en 2 filas con el mismo tag/offset consecutivo.
-- [ ] (PC-B) Los comandos sin ITEM en el ejemplo: el escritor numera todas las filas; ver duda de PC-A sobre ITEM de comandos.
+- [x] (PC-B) ¿Las filas de doble bit (señalización con 2 filas, p. ej. "Abierto" y "Cerrado") se modelan como 2 `Senal` (la 2ª sin tag/desc. scada) o como 1 con ambas? El ejemplo las escribe en 2 filas con el mismo tag/offset consecutivo.
+- [x] (PC-B) Los comandos sin ITEM en el ejemplo: el escritor numera todas las filas; ver duda de PC-A sobre ITEM de comandos.
 
 ## Dudas del generador (PC-A, tarea 2.1) — verificadas contra el ejemplo ETAP
 - [ ] TAG HMI: solo ~58 % se puede derivar de la descripción. El resto son nombres de punto del relé (ej. `ARRANQUE_PROT_PPAL_FASE_R`, `ENVIO_SENAL_TELEPROT`). ¿Vienen de una lista del fabricante/equipo (SEL-2241, P543, P142…) que podamos cargar como catálogo, o se escriben a mano en cada proyecto?
@@ -30,11 +30,11 @@ La PC-A es el usuario AD.GO\Pasante2 y la PC-B es el AD.GO\Pasante3. (La contras
 
 ## Carga de PDF de plano (PC-B, tarea 3.3)
 - [ ] En el plano 6402, las páginas 29/51/73 tienen columnas de bornes con rótulos verticales (ej. "Seccionador 229SL04 Remoto", "Falta Tensión Auxiliar SSAA", "Reserva") y tensiones (48 VCC, 110 Vcc). ¿Cada columna con rótulo = una señal de la lista? ¿Se ignoran "Negativo"/"Positivo" (alimentación)?
-- [ ] ¿Dónde figura en el plano el rótulo del módulo (DI9, etc.) para PLACA y ENTRADA? No aparece en el texto de la pág. 29.
+- [x] ¿Dónde figura en el plano el rótulo del módulo (DI9, etc.) para PLACA y ENTRADA? No aparece en el texto de la pág. 29.
 - [ ] ¿Cómo se decide si una señal es ALARMA, SEÑALIZACION, COMANDO o MEDICION? (por palabras del rótulo: "Falta"/"Falla" = alarma, "Abierto/Cerrado" = señalización doble bit, "Apertura/Cierre" = comando...)
 - [x] (PC-B) Cada columna rotulada del plano es una señal; Positivo/Negativo (alimentación) se ignoran — respuesta del usuario 2026-10-27.
-- [ ] (PC-B) Con el plano 6402 se obtiene "Interruptor 25204 en Remoto/Local" y "Campo 04 33KV Llave Tele/Distancia en D/en T": ¿los textos de OBSERVACIONES se corrigen a mano o hay una regla de redacción?
-- [ ] (PC-B) Las reservas del plano se ubican al final de cada campo. ¿Van ahí o dentro de su función (como en el ejemplo ETAP)?
+- [x] (PC-B) Con el plano 6402 se obtiene "Interruptor 25204 en Remoto/Local" y "Campo 04 33KV Llave Tele/Distancia en D/en T": ¿los textos de OBSERVACIONES se corrigen a mano o hay una regla de redacción?
+- [x] (PC-B) Las reservas del plano se ubican al final de cada campo. ¿Van ahí o dentro de su función (como en el ejemplo ETAP)?
 - [x] (PC-B) Reservas: van todas juntas en un único bloque al final de TODA la hoja (Nivel "RESERVAS"); la descripción aclara el campo (y el nivel si hay varios) — respuesta del usuario 2026-10-28 (corrigió su primera respuesta).
 
 ## Cargar datos desde el Excel (PC-B, 2026-10-28)
@@ -50,3 +50,11 @@ La PC-A es el usuario AD.GO\Pasante2 y la PC-B es el AD.GO\Pasante3. (La contras
 - [ ] Mediciones sin PLACA/ENTRADA (N/A) como en el ejemplo: ¿correcto, o las AI también ocupan una entrada de un módulo analógico?
 - [ ] (PC-B) Los lineamientos dan SBA/SBB/ST para seccionadores, pero el plano usa SA/SB/SL/ST. ¿SL (seccionador de línea) cómo se abrevia? Mientras tanto la app lo pregunta.
 - [ ] (PC-B) Señales sin equipo (ej. «Campo 04 33KV QF4 ACTUADA», «2TV04- Falta Vca Prot»): ¿hay una regla general (QF/QM/QC = interruptor/seccionador…) o se definen una por una?
+
+## Etapa "columnas fuera de SCADA" (PC-B, 2026-10-28)
+- [x] Columnas en alcance: A-G y P, S, T, W (PROTOCOLO, POS DNP, BORNERA, N° DE BORNE vacías). Origen de datos: PDF de plano y carga a mano. SCADA oculto de la app.
+- [x] Doble bit: 2 filas con ITEM propio. Controlador: SEL-2241 + tensión del nivel. ENTRADA (DI) = borne impreso. PLACA: la escribe el usuario por módulo. TAG HMI armado y editable; DESC. HMI = prefijo + texto sin tildes.
+- [x] (respuestas resumidas arriba; "doble bit", "comandos sin ITEM", "módulo", "OBSERVACIONES" y "reservas" quedaron resueltas con estas decisiones)
+- [ ] Salidas (comandos/DO): por ahora sin PLACA/ENTRADA. Cuando se retomen: ¿el par es el N.º de relé de salida (borne/2, ej. 9/10) o los bornes impresos?
+- [ ] Mediciones (AI): ¿se leen de otro plano/página? El plano 6402 no las trae en las páginas de bornes.
+- [ ] Controladores de relés de protección (SCHNEIDER P543…) y comunicaciones (RTAC, TAPCON, EXEMYS del Excel de materiales): ¿se cargan a mano fila por fila o hay una lista por tablero?

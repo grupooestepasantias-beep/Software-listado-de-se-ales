@@ -1,9 +1,8 @@
-"""Lectura de planos de ingeniería (PDF) para proponer las filas del listado.
+"""Lectura de planos de ingeniería (PDF) para llenar las columnas A-G del listado.
 
-Cada columna rotulada de las páginas de bornes es una señal; "Positivo/Negativo" (alimentación)
-se ignora. Las parejas Abierto/Cerrado, Remoto/Local, etc. forman una sola señal de doble bit.
-No asigna tags, offsets ni descripciones SCADA (eso es del generador) ni PLACA/ENTRADA (el
-rótulo del módulo es un dibujo, no texto). El vocabulario viene de plantillas/<id>/lectura_plano.json.
+Cada columna rotulada de las páginas de bornes es una señal; "Positivo/Negativo" (alimentación) se
+ignora. Las parejas Abierto/Cerrado, Local/Remoto, etc. forman una señal de doble bit (2 filas).
+El vocabulario sale de plantillas/<id>/lectura_plano.json.
 """
 from __future__ import annotations
 
@@ -14,7 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from modelo import Campo, Funcion, Nivel, Senal, TipoPunto
+from hmi import desc_hmi_desde, tag_hmi_desde
+from modelo import Campo, Funcion, Nivel, Senal
 from perfiles import Perfil
 
 RAIZ_PLANTILLAS = Path(__file__).parent / "plantillas"
@@ -27,13 +27,10 @@ class PdfNoDisponible(RuntimeError):
 @dataclass
 class LecturaSenal:
     pagina: int
-    banda: int
     funcion: Funcion
-    tipo_punto: TipoPunto
-    texto: str
-    estado_id: Optional[str] = None
+    texto: str                                           # en doble bit: "Seccionador X Abierto/Cerrado"
     es_reserva: bool = False
-    columnas: list[str] = field(default_factory=list)  # rótulos originales (1 o 2)
+    columnas: list[str] = field(default_factory=list)    # rótulos originales (1 o 2), en orden de estados
 
 
 @dataclass
@@ -74,42 +71,38 @@ def _bandas(lineas, tol: float = 12.0) -> list[list[tuple[float, float, str]]]:
     return [sorted(g) for g in grupos]
 
 
-def _par(a: str, b: str, pares: list[dict]) -> Optional[tuple[dict, str]]:
-    """Si a y b son los dos lados de un par (mismo equipo), devuelve (par, texto base)."""
+def _par(a: str, b: str, pares: list[dict]) -> Optional[tuple[dict, str, str, str]]:
+    """Si a y b son los dos lados de un par (mismo equipo): (par, base, rótulo del 1º estado, del 2º)."""
     for p in pares:
         s0, s1 = p["sufijos"]
         for x, y in ((a, b), (b, a)):
             if x.endswith(" " + s0) and y.endswith(" " + s1):
                 base = x[: -len(s0)].strip()
                 if base == y[: -len(s1)].strip():
-                    return p, base
+                    return p, base, x, y
     return None
 
 
-def _senales_de_banda(textos: list[str], cfg: dict, pagina: int, banda: int) -> list[LecturaSenal]:
+def _senales_de_banda(textos: list[str], cfg: dict, pagina: int) -> list[LecturaSenal]:
+    """textos = rótulos del módulo en orden de bornes (1 → n)."""
     ign = tuple(cfg["ignorar_prefijos"])
     utiles = [t for t in textos if not t.startswith(ign)]
     salida = any(t.endswith(tuple(" " + w for w in cfg["palabras_salida"])) for t in utiles)
-    tipo = TipoPunto.DO if salida else TipoPunto.DI
     res, i = [], 0
     while i < len(utiles):
         t = utiles[i]
         if t.lower() == cfg["reserva"].lower():
-            res.append(LecturaSenal(pagina, banda, Funcion.RESERVA, tipo, "Reserva", None, True, [t]))
+            res.append(LecturaSenal(pagina, Funcion.RESERVA, "Reserva", True, [t]))
             i += 1
             continue
         enc = _par(t, utiles[i + 1], cfg["pares_doble_bit"]) if i + 1 < len(utiles) else None
         if enc:
-            par, base = enc
+            par, base, e0, e1 = enc
             s0, s1 = par["sufijos"]
-            res.append(LecturaSenal(pagina, banda, Funcion(par["tipo"]), tipo, f"{base} {s0}/{s1}",
-                                    par["estado_id"], False, [t, utiles[i + 1]]))
+            res.append(LecturaSenal(pagina, Funcion(par["tipo"]), f"{base} {s0}/{s1}", False, [e0, e1]))
             i += 2
             continue
-        if salida:
-            res.append(LecturaSenal(pagina, banda, Funcion.COMANDO, tipo, t, cfg["comando_estado_id"], False, [t]))
-        else:
-            res.append(LecturaSenal(pagina, banda, Funcion.ALARMAS, tipo, t, cfg["alarma_estado_id"], False, [t]))
+        res.append(LecturaSenal(pagina, Funcion.COMANDO if salida else Funcion.ALARMAS, t, False, [t]))
         i += 1
     return res
 
@@ -145,25 +138,18 @@ def leer_plano(ruta, perfil: Perfil, avance: Optional[Callable[[int, int], None]
             if len(lineas) < cfg["min_columnas_pagina"] or marcas < 2:
                 continue
             senales: list[LecturaSenal] = []
-            for k, banda in enumerate(_bandas(lineas), start=1):
-                senales += _senales_de_banda([t for _, _, t in banda], cfg, n, k)
+            for banda in _bandas(lineas):
+                # con la página girada 270° el borne 1 es la etiqueta de mayor x; con 90° es la de menor x
+                orden = banda[::-1] if page.rotation != 90 else banda
+                senales += _senales_de_banda([t for _, _, t in orden], cfg, n)
             nivel, campo = _adivinar([t for _, _, t in lineas])
             if senales:
                 paginas.append(PaginaLeida(n, nivel, campo, senales))
     return paginas
 
 
-def _senal(ls: LecturaSenal, perfil: Perfil) -> Senal:
-    s = Senal(funcion=ls.funcion, tipo_punto=ls.tipo_punto, observaciones=ls.texto,
-              estado_id=ls.estado_id, es_reserva=ls.es_reserva)
-    if ls.estado_id:
-        e = perfil.estado(ls.estado_id)
-        s.s0, s.s1, s.s2, s.s3 = e["s0"], e["s1"], e["s2"], e["s3"]
-    return s
-
-
 def codigo_nivel(nombre: str, cfg: dict) -> str:
-    """Dígito del tag según la tensión del nivel ('33KV' -> '2'); '' si no se reconoce."""
+    """Dígito del nivel de tensión ('33KV' -> '2'); '' si no se reconoce."""
     m = re.search(r"(\d+(?:[.,]\d+)?)\s*k\s*v", nombre, re.I)
     if not m:
         return ""
@@ -174,12 +160,30 @@ def codigo_nivel(nombre: str, cfg: dict) -> str:
     return ""
 
 
+def controlador_por_defecto(nivel: str, cfg: dict) -> str:
+    """'33KV' -> 'SEL-2241-33kV' (regla del cliente; se puede cambiar fila por fila)."""
+    kv = re.sub(r"(?i)\s*k\s*v$", "kV", nivel.strip())
+    return cfg.get("controlador", "").format(nivel=kv) if nivel else ""
+
+
+def _filas(ls: LecturaSenal, prefijo: str, controlador: str) -> list[Senal]:
+    """Filas del listado de una señal: 1, o 2 si es doble bit (la 2ª sin TAG ni DESC. HMI)."""
+    if ls.es_reserva:
+        return [Senal(funcion=Funcion.RESERVA, controlador=controlador, tag_hmi="N/A", es_reserva=True)]
+    s = Senal(funcion=ls.funcion, controlador=controlador, tag_hmi=tag_hmi_desde(ls.texto),
+              desc_hmi=desc_hmi_desde(prefijo, ls.texto))
+    filas = [s]
+    if len(ls.columnas) == 2:
+        filas.append(Senal(funcion=ls.funcion, controlador=controlador, segunda_fila=True))
+    return filas
+
+
 def a_niveles(paginas: list[PaginaLeida], perfil: Perfil,
               destinos: Optional[dict[int, tuple]] = None, lugar: str = "") -> list[Nivel]:
     """Arma Nivel > Campo > Senal.
 
     `destinos` = {pagina: (nivel, campo, descripcion[, controlador[, nombre del campo]])} editados por el usuario.
-    `lugar` = nombre por defecto del campo en el prefijo (ej. 'LC' -> '303LC'); `nombre` lo pisa por campo."""
+    `lugar` = nombre por defecto del campo en el prefijo (ej. 'LC' -> '204LC'); `nombre` lo pisa por campo."""
     cfg = cargar_config(perfil)
     orden = {f: i for i, f in enumerate(perfil.orden_funciones)}
     niveles: dict[str, Nivel] = {}
@@ -190,26 +194,34 @@ def a_niveles(paginas: list[PaginaLeida], perfil: Perfil,
         nv = niveles.setdefault(nivel, Nivel(nombre=nivel, codigo=codigo_nivel(nivel, cfg)))
         cp = campos.get((nivel, campo))
         if cp is None:
-            nombre = (resto[1] if len(resto) > 1 and resto[1] else lugar)  # LC, GTR01, TRAFO1…
-            prefijo = f"{nv.codigo}{campo}{nombre}" if nombre else ""
-            cp = campos[(nivel, campo)] = Campo(numero=campo, descripcion=desc, prefijo=prefijo,
-                                                controlador=resto[0] if resto else "")
+            nombre = resto[1] if len(resto) > 1 and resto[1] else lugar  # LC, GTR01, TRAFO1…
+            ctl = resto[0] if resto and resto[0] else controlador_por_defecto(nivel, cfg)
+            cp = campos[(nivel, campo)] = Campo(numero=campo, descripcion=desc,
+                                                prefijo=f"{nv.codigo}{campo}{nombre}", controlador=ctl)
             nv.campos.append(cp)
         for ls in pg.senales:
-            if ls.es_reserva:  # van todas juntas al final de la hoja; la descripción aclara el campo
-                reservas.append((nivel, campo, _senal(ls, perfil)))
+            filas = _filas(ls, cp.prefijo, cp.controlador)
+            if ls.es_reserva:  # van todas juntas al final de la hoja
+                reservas.append((nivel, campo, filas[0]))
             else:
-                cp.senales.append(_senal(ls, perfil))
-    for cp in campos.values():  # función en el orden fijo del perfil
-        cp.senales.sort(key=lambda s: orden.get(s.funcion.value, 99))
+                cp.senales += filas
+    # función en el orden fijo del perfil, sin separar las 2 filas de un doble bit
+    for cp in campos.values():
+        grupos, actual = [], None
+        for s in cp.senales:
+            if s.segunda_fila:
+                actual.append(s)
+            else:
+                actual = [s]
+                grupos.append(actual)
+        grupos.sort(key=lambda g: orden.get(g[0].funcion.value, 99))
+        cp.senales = [s for g in grupos for s in g]
     for nv in niveles.values():  # un campo (o nivel) con solo reservas no tiene filas propias
         nv.campos = [c for c in nv.campos if c.senales]
     resultado = [nv for nv in niveles.values() if nv.campos]
     if reservas:
         con_nivel = len(niveles) > 1  # con varios niveles el número de campo solo no alcanza
-        for nivel, campo, s in reservas:
-            s.observaciones = (f"Reserva {nivel + ' ' if con_nivel and nivel else ''}"
-                               f"Campo {campo} {s.tipo_punto.value}")
-        resultado.append(Nivel(nombre="RESERVAS",
-                               campos=[Campo(numero="", senales=[s for _, _, s in reservas])]))
+        for nivel, campo, s in reservas:  # el campo se aclara en la descripción
+            s.desc_hmi = f"RESERVA {nivel + ' ' if con_nivel and nivel else ''}Campo {campo}"
+        resultado.append(Nivel(nombre="RESERVAS", campos=[Campo(numero="", senales=[s for _, _, s in reservas])]))
     return resultado

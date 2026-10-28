@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from modelo import Funcion, TipoPunto
+from modelo import Funcion
 
 RAIZ = Path(__file__).parent / "perfiles"
-ARCHIVOS = ("perfil", "estados", "abreviaturas", "unidades", "sufijos_medicion")
+ARCHIVOS = ("perfil",)
 CLAVES_PERFIL = ("id", "nombre", "cliente", "hojas", "columnas", "orden_funciones", "largos")
 
 
@@ -26,10 +26,6 @@ class PerfilInvalido(ValueError):
 class Perfil:
     carpeta: Path
     datos: dict            # perfil.json
-    estados: dict          # estados.json
-    abreviaturas: dict     # abreviaturas.json
-    unidades: dict         # unidades.json
-    sufijos_medicion: dict  # sufijos_medicion.json
 
     @property
     def id(self) -> str:
@@ -53,22 +49,6 @@ class Perfil:
 
     def largo_max(self, campo: str) -> Optional[int]:
         return self.datos["largos"].get(campo)
-
-    def estado(self, estado_id: str) -> dict:
-        for e in self.estados["estados"]:
-            if e["id"] == estado_id:
-                return e
-        raise KeyError(f"estado '{estado_id}' no existe en el perfil {self.id}")
-
-    def estados_para(self, funcion: str, tipo_punto: Optional[str] = None) -> list[dict]:
-        return [
-            e for e in self.estados["estados"]
-            if e["funcion"] == funcion and (tipo_punto is None or e["tipo_punto"] == tipo_punto)
-        ]
-
-    def sufijos(self, codigo: str) -> list[dict]:
-        """Un código puede repetirse con distinta magnitud (ej. AS: corriente fase S y potencia aparente)."""
-        return [s for s in self.sufijos_medicion["sufijos"] if s["codigo"] == codigo]
 
 
 def listar_perfiles(raiz: Path = RAIZ) -> list[str]:
@@ -134,35 +114,6 @@ def validar(perfil: Perfil) -> list[str]:
     for k, v in d["largos"].items():
         if v is not None and (not isinstance(v, int) or v <= 0):
             p.append(f"largos.{k} debe ser un entero positivo o null")
-
-    ids = set()
-    tipos = {t.value for t in TipoPunto}
-    for e in perfil.estados.get("estados", []):
-        for k in ("id", "funcion", "tipo_punto", "bits", "s0", "s1", "s2", "s3"):
-            if k not in e:
-                p.append(f"estados.json: estado sin '{k}': {e.get('id', e)}")
-        if e.get("id") in ids:
-            p.append(f"estados.json: id repetido '{e.get('id')}'")
-        ids.add(e.get("id"))
-        if e.get("funcion") not in funciones_validas:
-            p.append(f"estados.json: función desconocida en '{e.get('id')}'")
-        elif e["funcion"] not in orden and e["funcion"] != Funcion.RESERVA.value:
-            p.append(f"estados.json: '{e['id']}' usa una función que no está en orden_funciones")
-        if e.get("tipo_punto") not in tipos:
-            p.append(f"estados.json: tipo_punto desconocido en '{e.get('id')}'")
-        if e.get("bits") not in (1, 2):
-            p.append(f"estados.json: bits debe ser 1 o 2 en '{e.get('id')}'")
-
-    for s in perfil.sufijos_medicion.get("sufijos", []):
-        for k in ("codigo", "magnitud", "unidad", "rango_raw"):
-            if k not in s:
-                p.append(f"sufijos_medicion.json: falta '{k}' en {s.get('codigo', s)}")
-        rr = s.get("rango_raw")
-        if rr is not None and rr not in perfil.sufijos_medicion.get("rangos_raw", {}):
-            p.append(f"sufijos_medicion.json: rango_raw '{rr}' no está definido en rangos_raw")
-
-    if not perfil.unidades.get("analogicas"):
-        p.append("unidades.json: falta la lista 'analogicas'")
     return p
 
 

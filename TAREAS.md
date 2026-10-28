@@ -32,6 +32,9 @@ Estados: [ ] pendiente · [~] en curso · [x] hecho · [!] bloqueado
 | 3.2 | `excel_reader`, editor de señales, merges nivel/campo/función | PC-B | [ ] (subtareas: leer Excel existente a `Proyecto`; editor de señales con campos "fijos"; recalcular merges) |
 | 3.3 | Cargar PDF de plano de ingeniería y armar la lista de señales (hoja 2): leer rótulos de bornes/módulos con pymupdf y proponer filas | PC-B (lectura) / PC-A (reglas de tags, estados, placa/entrada) | [~] 2026-10-28 Primera versión de PC-B: `pdf_plano.py` + `plantillas/EPEN/lectura_plano.json` (vocabulario) + pestaña "Señales (PDF)" en la app. Cada columna rotulada = una señal; Positivo/Negativo ignorados (confirmado por el usuario); pares Abierto/Cerrado, Remoto/Local, en D/en T → 1 señal de doble bit; Cierre/Apertura → COMANDO DO; Reserva → RESERVA. Plano 6402: págs. 29/51/73 = campos 04/05/06 de 33KV, 53 señales c/u. Deja vacíos TAG, OFFSET, DESC. SCADA, DESC. HMI (generador 2.1 de PC-A) y PLACA/ENTRADA (el rótulo del módulo es un dibujo). Pendiente: reglas de alarma vs. falla, medición (AI), nombres de campo. 36 tests OK |
 
+## Etapa actual (2026-10-28): REINICIO — solo columnas A-G
+La app muestra y exporta únicamente A ITEM · B NIVEL · C DESCRIP · D CONTROLADOR · E FUNCION · F TAG (HMI) · G DESC. HMI; el PDF del plano llena la tabla y se corrige a mano. Todo lo demás (PLACA, ENTRADA, TIPO, OBSERVACIONES, SCADA, carátula) queda fuera. Se borró la lógica SCADA de PC-A del árbol de trabajo (sigue en el commit a836f74 y en `respaldo/`). Las filas de las semanas 2-3 que hablan de generador/validador/UTR quedan SUSPENDIDAS hasta nueva orden.
+
 ## Semana 4 — Cierre
 | 4.1 | Pruebas contra ejemplo ETAP y ajuste de reglas | PC-A | [ ] |
 | 4.2 | Exportar, errores, manual, empaquetado, aceptación | PC-B | [ ] (subtareas: exportar desde la app; mensajes de error del validador; manual; PyInstaller; prueba end-to-end con el usuario) |

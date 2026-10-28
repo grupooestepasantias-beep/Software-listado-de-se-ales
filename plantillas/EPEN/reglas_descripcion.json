@@ -36,7 +36,7 @@
   },
   "texto": {
     "campo # #kv falta ucc comando": "F/U CMDO",
-    "campo # #kv falta ucc fuerza motriz": "F/U FZA MOT",
+    "campo # #kv falta ucc fuerza motriz": "F/U FM",
     "campo # #kv tension de senalizacion ok": "F/U SENAL",
     "prot ppal loma campana falla interna": "PROT DIF F/IN",
     "prot ppal loma campana disparo general": "DISP GRL PPAL",
@@ -282,5 +282,9 @@
   ],
   "_inferidas": [
     "equipo seccionador SB = SEC BB (por analogía con SA = SEC BA; no figura en el Excel ni en los lineamientos)"
+  ],
+  "_decisiones": [
+    "Conflictos del Excel: se usó la abreviatura más frecuente (decisión delegada por el usuario, 2026-10-28).",
+    "Empates (Falta Ucc comando / fuerza motriz): se igualaron a la frase equivalente con equipo (F/U CMDO, F/U FM)."
   ]
 }

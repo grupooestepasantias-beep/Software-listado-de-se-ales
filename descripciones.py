@@ -37,6 +37,7 @@ class Pendiente:
     borrador: str = ""
     maximo: int = 20  # largo máximo del texto a responder (ya descontado el prefijo si se conoce)
     respuesta: str = ""
+    exacta: str = ""  # texto con sus números (para las respuestas que llevan números: TC3-01 ≠ TC3-02)
 
 
 @dataclass
@@ -65,7 +66,16 @@ class Reglas:
                                      encoding="utf-8")
 
     def recordar(self, p: Pendiente) -> None:
-        self.memoria[p.tipo][p.clave] = p.respuesta.strip()
+        # una respuesta con números vale solo para ese texto exacto; sin números vale para todos los parecidos
+        clave = p.exacta if p.exacta and re.search(r"\d", p.respuesta) else p.clave
+        self.memoria[p.tipo][clave] = p.respuesta.strip()
+
+    def buscar_texto(self, tipo: str, texto: str) -> Optional[tuple[str, str]]:
+        """Abreviatura completa de un texto: primero la respuesta exacta, después la general."""
+        exacta = _norm(texto)
+        if exacta in self.memoria[tipo]:
+            return self.memoria[tipo][exacta], "memoria"
+        return self.buscar(tipo, re.sub(r"\d+", "#", exacta))
 
     # ---- consulta de una abreviatura: primero lo que dijo el usuario, después las reglas del cliente
     def buscar(self, tipo: str, clave: str) -> Optional[tuple[str, str]]:
@@ -110,21 +120,22 @@ def proponer(s: Senal, prefijo: str, reglas: Reglas, informe: Informe) -> Option
     """DESC. SCADA de una señal, o None si falta algún dato (queda anotado en el informe)."""
     eq, letras, frase = analizar(s.observaciones, reglas.sinonimos)
     ejemplo, falta, origenes = s.observaciones, [], []
-    propia = reglas.memoria["largo"].get(re.sub(r"\d+", "#", _norm(s.observaciones)))
+    propia = reglas.buscar_texto("largo", s.observaciones)
     if propia:  # el usuario ya dio la abreviatura completa de esta señal
         informe_origen(informe, ["memoria"])
-        return _unir(prefijo, propia, maximo=reglas.maximo) or None
+        return _unir(prefijo, propia[0], maximo=reglas.maximo) or None
 
     def pedir(tipo, clave, pregunta, borrador=""):
         if not any(p.tipo == tipo and p.clave == clave for p in informe.pendientes):
             informe.pendientes.append(Pendiente(tipo, clave, pregunta, ejemplo, borrador,
-                                                max(reglas.maximo - len(prefijo) - 1, 1)))
+                                                max(reglas.maximo - len(prefijo) - 1, 1),
+                                                exacta=_norm(s.observaciones) if tipo == "texto" else ""))
         falta.append(clave)
 
     # sin equipo reconocible: el texto completo es "autodescriptivo" y lo define el usuario
     if not eq:
         k = _norm(s.observaciones)
-        r = reglas.buscar("texto", re.sub(r"\d+", "#", k))
+        r = reglas.buscar_texto("texto", s.observaciones)
         if r is None:
             pedir("texto", re.sub(r"\d+", "#", k), f"Abreviatura para «{s.observaciones}»")
             return None
@@ -175,13 +186,14 @@ def informe_origen(informe: Informe, origenes: list[str]) -> None:
 
 def _largo(s: Senal, prefijo: str, reglas: Reglas, informe: Informe, ejemplo: str) -> Optional[str]:
     """Las partes conocidas no entran juntas en 20: se pide la abreviatura completa de esta señal."""
+    propia = reglas.buscar_texto("largo", s.observaciones)
+    if propia:
+        return _unir(prefijo, propia[0], maximo=reglas.maximo) or None
     clave = re.sub(r"\d+", "#", _norm(s.observaciones))
-    if clave in reglas.memoria["largo"]:
-        return _unir(prefijo, reglas.memoria["largo"][clave], maximo=reglas.maximo) or None
-    if not any(p.tipo == "largo" and p.clave == clave for p in informe.pendientes):
+    if not any(p.tipo == "largo" and p.exacta == _norm(s.observaciones) for p in informe.pendientes):
         informe.pendientes.append(Pendiente(
             "largo", clave, f"No entra en {reglas.maximo}: abreviatura completa de «{s.observaciones}»",
-            ejemplo, "", max(reglas.maximo - len(prefijo) - 1, 1)))
+            ejemplo, "", max(reglas.maximo - len(prefijo) - 1, 1), exacta=_norm(s.observaciones)))
     return None
 
 
@@ -206,10 +218,11 @@ def aplicar(proyecto: Proyecto, perfil: Perfil, reglas: Optional[Reglas] = None)
             for s, d in asignadas:
                 if d in repetidas:  # dos señales del campo no pueden llamarse igual: que el usuario las distinga
                     clave = re.sub(r"\d+", "#", _norm(s.observaciones))
-                    if not any(p.tipo == "largo" and p.clave == clave for p in informe.pendientes):
+                    if not any(p.tipo == "largo" and p.exacta == _norm(s.observaciones) for p in informe.pendientes):
                         informe.pendientes.append(Pendiente(
                             "largo", clave, f"«{d}» se repite en el campo: abreviatura propia de «{s.observaciones}»",
-                            s.observaciones, "", max(reglas.maximo - len(prefijo) - 1, 1)))
+                            s.observaciones, "", max(reglas.maximo - len(prefijo) - 1, 1),
+                            exacta=_norm(s.observaciones)))
                     continue
                 s.desc_scada = d
                 s.fijos.append("desc_scada")

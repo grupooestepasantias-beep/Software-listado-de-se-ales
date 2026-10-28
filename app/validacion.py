@@ -13,7 +13,7 @@ COLS_REVISION = ("rev", "fecha", "descripcion", "proyecto", "revisor", "aprobado
 def datos_vacios() -> dict:
     d = {k: "" for k in CAMPOS_TEXTO}
     d["escala"] = "N/A"
-    d.update(item_inicial="", offsets={t.value: "" for t in TipoPunto},
+    d.update(item_inicial="1", offsets={t.value: "" for t in TipoPunto},
              referencias=[], revisiones=[])
     return d
 
@@ -43,12 +43,9 @@ def validar(datos: dict, max_referencias: int, max_revisiones: int,
     """Devuelve la lista de problemas (vacía si el formulario está listo)."""
     d = limpiar(datos)
     p = [f"Falta completar: {k}" for k in OBLIGATORIOS if not d[k]]
-    # El software siempre pregunta desde qué número arrancar (ITEM y un offset por tipo de punto)
-    if _entero(d.get("item_inicial", "")) is None:
+    # El software siempre pregunta desde qué número arrancar el ITEM (los OFFSET son de SCADA: etapa posterior)
+    if d.get("item_inicial", "") != "" and _entero(d["item_inicial"]) is None:
         p.append("ITEM inicial: ingresá un número entero (0 o mayor)")
-    for tipo, v in d.get("offsets", {}).items():
-        if _entero(v) is None:
-            p.append(f"OFFSET inicial {tipo}: ingresá un número entero (0 o mayor)")
     doc = d["numero_documento"]
     if doc and largo_documento and len(doc.replace("-", "")) > largo_documento:
         p.append(f"Número de documento: admite hasta {largo_documento} caracteres sin contar guiones "
@@ -75,8 +72,8 @@ def a_proyecto(datos: dict, perfil_id: str, proyecto_base: Proyecto | None = Non
     p = proyecto_base or Proyecto(perfil_id=perfil_id)
     p.perfil_id = perfil_id
     p.caratula = car
-    p.item_inicial = _entero(d["item_inicial"]) or 0
-    p.offsets_iniciales = {t: (_entero(v) or 0) for t, v in d["offsets"].items()}
+    p.item_inicial = _entero(d["item_inicial"]) if _entero(d["item_inicial"]) is not None else 1
+    p.offsets_iniciales = {t: (_entero(v) or 0) for t, v in d.get("offsets", {}).items() if _entero(v) is not None}
     return p
 
 

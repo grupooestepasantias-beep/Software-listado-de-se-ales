@@ -11,6 +11,10 @@ import perfiles
 from modelo import Campo, Funcion, Nivel, Proyecto, Senal, TipoPunto
 
 
+ESTADOS = {"sen_ab_ce": ("AB", "CE"), "sen_loc_rem": ("LOC", "REM"), "sen_man_aut": ("MAN", "AUT"),
+           "com_ab_ce": ("AB", "CE")}  # S1 y S2 (el perfil ya no trae estados: SCADA quedó para después)
+
+
 class TestDescripciones(unittest.TestCase):
     def setUp(self):
         self.perfil = perfiles.cargar_perfil("EPEN")
@@ -29,9 +33,9 @@ class TestDescripciones(unittest.TestCase):
         return Senal(funcion=Funcion.ALARMAS, tipo_punto=TipoPunto.DI, observaciones=texto)
 
     def senal(self, texto, estado_id):
-        e = self.perfil.estado(estado_id)
+        s1, s2 = ESTADOS[estado_id]
         return Senal(funcion=Funcion.SENALIZACION, tipo_punto=TipoPunto.DI, observaciones=texto,
-                     estado_id=estado_id, s1=e["s1"], s2=e["s2"])
+                     estado_id=estado_id, s1=s1, s2=s2)
 
     def aplicar(self, p, reglas=None):
         return dsc.aplicar(p, self.perfil, reglas or dsc.Reglas(self.perfil, self.base))
@@ -82,11 +86,26 @@ class TestDescripciones(unittest.TestCase):
 
     def test_el_comando_no_se_duplica_con_su_senalizacion(self):
         sen = self.senal("Interruptor 25204 Abierto/Cerrado", "sen_ab_ce")
-        e = self.perfil.estado("com_ab_ce")
         com = Senal(funcion=Funcion.COMANDO, tipo_punto=TipoPunto.DO, observaciones="Interruptor 25204 Cierre/Apertura",
-                    estado_id="com_ab_ce", s1=e["s1"], s2=e["s2"])
+                    estado_id="com_ab_ce", s1="AB", s2="CE")
         inf, _ = self.aplicar(self.proyecto(sen, com))
         self.assertEqual((sen.desc_scada, com.desc_scada, inf.pendientes), ("204AP INT", "", []))
+
+    def test_respuesta_con_numeros_vale_solo_para_ese_texto(self):
+        a = self.alarma("Alimentación 110Vcc TC3-01 Falta")
+        inf, reglas = self.aplicar(self.proyecto(a))
+        inf.pendientes[0].respuesta = "F/UCC TC3-01"  # lleva números: no se puede reutilizar para TC3-02
+        reglas.recordar(inf.pendientes[0])
+        b = self.alarma("Alimentación 110Vcc TC3-02 Falta")
+        inf2, _ = self.aplicar(self.proyecto(a, b), reglas)
+        self.assertEqual(a.desc_scada, "204AP F/UCC TC3-01")
+        self.assertEqual((b.desc_scada, len(inf2.pendientes)), ("", 1))
+        # sin números sí se generaliza
+        inf2.pendientes[0].respuesta = "F/UCC"
+        reglas.recordar(inf2.pendientes[0])
+        c = self.alarma("Alimentación 110Vcc TC3-05 Falta")
+        inf3, _ = self.aplicar(self.proyecto(c), reglas)
+        self.assertEqual((c.desc_scada, inf3.pendientes), ("204AP F/UCC", []))
 
     def test_texto_sin_equipo_se_pregunta_completo(self):
         s = self.alarma("Campo 04 33KV QF4 ACTUADA")
