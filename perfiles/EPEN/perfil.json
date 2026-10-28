@@ -13,6 +13,7 @@
     "fila_encabezado": 5,
     "primera_fila_datos": 6
   },
+  "plantilla": "plantillas/EPEN",
   "orden_funciones": ["ALARMAS", "SEÑALIZACION", "COMANDO", "MEDICION"],
   "largos": {
     "desc_scada": 20,
@@ -35,6 +36,9 @@
     "bits_validos": [1, 2],
     "sufijo_comando": "C",
     "campos_especiales_sin_nivel": true,
+    "variable_inicial": 0,
+    "variable_inicial_medicion": 1,
+    "nota_variable_inicial": "PENDIENTE: el ejemplo arranca en 00 (303) o en 10 (TP1, 101...). El generador admite indicarlo por campo.",
     "tags_no_estandar_en_ejemplo": ["SACC.01V48", "UTR02T_132", "N/A (reservas)"],
     "niveles": { "3": "132kV", "2": "33kV", "1": "13,2kV" },
     "campos_especiales": {

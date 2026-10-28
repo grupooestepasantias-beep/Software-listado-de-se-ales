@@ -41,6 +41,9 @@ perfiles.py               cargar_perfil(id), validar(perfil), listar_perfiles(),
 perfiles/EPEN/            perfil.json (columnas A-W, orden, largos, patrón de tag), estados.json,
                           sufijos_medicion.json, unidades.json, abreviaturas.json
 tags.py                   construir_tag / parsear_tag / validar_tag / proxima_variable / construir_desc_scada
+generador.py              generar(proyecto, perfil) -> avisos: ordena por función, asigna TAG/OFFSET/estados/UNITS/HMI,
+                          crea la 2ª fila del doble bit, enlaza comando<->señalización por Senal.par, respeta Senal.fijos
+excel_writer.py, app/, pdf_plano.py, herramientas/, plantillas/   (PC-B: Excel, interfaz Tkinter y lectura del plano)
 tests/                    test_perfiles_modelo.py, test_tags.py
 TAREAS.md BITACORA.md PREGUNTAS.md CONTEXTO_PARA_CLAUDE.md
 ```

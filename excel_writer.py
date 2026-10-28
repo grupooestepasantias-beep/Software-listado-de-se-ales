@@ -1,0 +1,305 @@
+"""Escritor del listado de señales a .xlsx.
+
+Hojas, columnas activas, letras y orden salen del perfil; anchos, estilos, merges de
+encabezado, filtros, impresión y posición de los datos de la carátula salen de la
+plantilla (plantillas/<id_perfil>/<id_perfil>_plantilla.json, extraída del ejemplo con
+herramientas/extraer_plantilla.py). Aquí no hay reglas de ningún cliente.
+"""
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Optional, Union
+
+from openpyxl import Workbook
+from openpyxl.formatting.rule import Rule
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles.colors import Color
+from openpyxl.styles.differential import DifferentialStyle
+from openpyxl.worksheet.properties import PageSetupProperties
+
+from modelo import Proyecto, Senal
+from perfiles import Perfil
+
+RAIZ_PLANTILLAS = Path(__file__).parent / "plantillas"
+
+
+class PlantillaNoEncontrada(FileNotFoundError):
+    pass
+
+
+class DocumentoInvalido(ValueError):
+    pass
+
+
+def cargar_plantilla(perfil: Perfil) -> dict:
+    """Usa perfil.datos["plantilla"] si existe; si no, plantillas/<id>/."""
+    rel = perfil.datos.get("plantilla")
+    carpeta = Path(__file__).parent / rel if rel else RAIZ_PLANTILLAS / perfil.id
+    ruta = carpeta / f"{perfil.id}_plantilla.json"
+    if not ruta.is_file():
+        raise PlantillaNoEncontrada(f"no existe la plantilla {ruta}")
+    return json.loads(ruta.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------- estilos
+def _color(spec) -> Optional[Color]:
+    if spec is None:
+        return None
+    if isinstance(spec, str):
+        return Color(rgb=spec)
+    if "theme" in spec:
+        return Color(theme=spec["theme"], tint=spec.get("tint", 0.0))
+    if "indexed" in spec:
+        return Color(indexed=spec["indexed"])
+    return None
+
+
+def _lado(spec) -> Side:
+    if not spec:
+        return Side()
+    return Side(style=spec["style"], color=_color(spec.get("color")))
+
+
+def aplicar_estilo(cell, e: dict) -> None:
+    f = e["font"]
+    cell.font = Font(name=f["name"], sz=f["sz"], b=f["b"], i=f["i"], u=f["u"],
+                     color=_color(f["color"]))
+    if e["fill"]:
+        cell.fill = PatternFill(fill_type=e["fill"]["type"], fgColor=_color(e["fill"]["fg"]))
+    b = e["border"]
+    cell.border = Border(left=_lado(b["left"]), right=_lado(b["right"]),
+                         top=_lado(b["top"]), bottom=_lado(b["bottom"]))
+    a = e["align"]
+    cell.alignment = Alignment(horizontal=a["h"], vertical=a["v"], wrap_text=a["wrap"],
+                               textRotation=a["rot"], indent=a["indent"])
+    cell.number_format = e["fmt"]
+
+
+def _anchos(ws, columnas: dict) -> None:
+    for letra, c in columnas.items():
+        ancho = c["ancho"] if isinstance(c, dict) else c
+        if ancho:
+            ws.column_dimensions[letra].width = ancho
+        if isinstance(c, dict) and c.get("oculta"):
+            ws.column_dimensions[letra].hidden = True
+
+
+def _con_fila_final(ref: str, ultima: int) -> str:
+    """'A5:W584' -> 'A5:W{ultima}'; también sirve para áreas con comillas/$."""
+    return re.sub(r"(\$?[A-Z]+\$?)\d+(?!.*\d)", lambda m: f"{m.group(1)}{ultima}", ref)
+
+
+# ---------------------------------------------------------------- listado
+def _valor(clave: str, s: Senal, item: int, nivel, campo) -> object:
+    if clave == "item":
+        return item
+    if clave == "nivel":
+        return nivel.nombre
+    if clave == "descrip":
+        return campo.descripcion
+    if clave == "controlador":
+        return s.controlador or campo.controlador
+    if clave == "funcion":
+        return s.funcion.value
+    if clave == "tipo_punto":
+        return s.tipo_punto.value if s.tipo_punto else None
+    return getattr(s, clave, None)
+
+
+def _escribir_listado(ws, proyecto: Proyecto, perfil: Perfil, t: dict) -> int:
+    hojas = perfil.datos["hojas"]
+    primera = hojas["primera_fila_datos"]
+    enc = hojas["fila_encabezado"]
+    activas = perfil.columnas_activas
+    letra_de = {c["clave"]: c["letra"] for c in perfil.columnas}
+
+    _anchos(ws, t["columnas"])
+    for r, h in t["alturas_filas"].items():
+        ws.row_dimensions[int(r)].height = h
+    for r, fila in t["encabezado"].items():
+        for letra, cel in fila.items():
+            c = ws[f"{letra}{r}"]
+            c.value = cel["v"]
+            aplicar_estilo(c, cel)
+    for m in t["merges_encabezado"]:
+        ws.merge_cells(m)
+
+    estilo_dato = t["estilo_filas_datos"][str(primera)]
+    alto = t["alturas_filas"].get(str(primera))
+    fila = primera
+    item = proyecto.item_inicial
+    # (columna -> [(desde, hasta)]) de merges verticales, solo en columnas activas
+    merges: list[tuple[str, int, int]] = []
+
+    def _cerrar(letra: str, desde: int, hasta: int) -> None:
+        if hasta > desde:
+            merges.append((letra, desde, hasta))
+
+    for nivel in proyecto.niveles:
+        n_desde = fila
+        for campo in nivel.campos:
+            c_desde = fila
+            f_desde, f_func = fila, None
+            for s in campo.senales:
+                if f_func is not None and s.funcion != f_func:
+                    _cerrar(letra_de["funcion"], f_desde, fila - 1)
+                    f_desde = fila
+                f_func = s.funcion
+                for col in activas:
+                    cel = ws[f"{col['letra']}{fila}"]
+                    cel.value = _valor(col["clave"], s, item, nivel, campo)
+                    aplicar_estilo(cel, estilo_dato[col["letra"]])
+                if alto:
+                    ws.row_dimensions[fila].height = alto
+                item += 1
+                fila += 1
+            if f_func is not None:
+                _cerrar(letra_de["funcion"], f_desde, fila - 1)
+            _cerrar(letra_de["descrip"], c_desde, fila - 1)
+        _cerrar(letra_de["nivel"], n_desde, fila - 1)
+
+    activas_letras = {c["letra"] for c in activas}
+    for letra, d, h in merges:
+        if letra in activas_letras:
+            ws.merge_cells(f"{letra}{d}:{letra}{h}")
+
+    ultima = max(fila - 1, primera)  # sin señales el rango queda en la primera fila de datos
+    if t["autofiltro"]:
+        ws.auto_filter.ref = _con_fila_final(t["autofiltro"], ultima)
+    if t["area_impresion"]:
+        ws.print_area = _con_fila_final(t["area_impresion"].split("!")[-1].replace("$", ""), ultima)
+    if t["titulos_repetir_filas"]:
+        ws.print_title_rows = t["titulos_repetir_filas"].replace("$", "")
+    _pagina(ws, t)
+
+    # valores duplicados en DESC. SCADA (misma regla visual que el ejemplo)
+    if t["formato_condicional"] and "desc_scada" in letra_de and fila > primera:
+        regla = t["formato_condicional"][0]
+        dxf = DifferentialStyle(fill=PatternFill(bgColor=_color(regla["dxf_fill"])))
+        L = letra_de["desc_scada"]
+        ws.conditional_formatting.add(f"{L}{primera}:{L}{ultima}",
+                                      Rule(type="duplicateValues", dxf=dxf))
+    return ultima
+
+
+def _pagina(ws, t: dict) -> None:
+    p = t["pagina"]
+    ws.page_setup.orientation = p["orientacion"]
+    ws.page_setup.paperSize = p["papel"]
+    if p.get("escala"):
+        ws.page_setup.scale = p["escala"]
+    if p.get("fit_to_page"):
+        ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+        ws.page_setup.fitToHeight = p.get("ajustar_alto", 0)
+        ws.page_setup.fitToWidth = p.get("ajustar_ancho") or 1
+    for k, v in t["margenes"].items():
+        setattr(ws.page_margins, k, v)
+
+
+# ---------------------------------------------------------------- carátula
+def _coords_dinamicas(campos: dict) -> set[str]:
+    out: set[str] = set()
+    r0, r1 = campos["referencias"]["filas"]
+    for r in range(r0, r1 + 1):
+        out.add(f'{campos["referencias"]["col_codigo"]}{r}')
+        out.add(f'{campos["referencias"]["col_titulo"]}{r}')
+    v0, v1 = campos["revisiones"]["filas"]
+    for r in range(v0, v1 + 1):
+        out.update(f"{col}{r}" for col in campos["revisiones"]["columnas"].values())
+    out.update(c["celda"] for c in campos["simples"].values())
+    out.update(campos["documento"]["celdas"])
+    out.add(campos["hoja"]["celda"])
+    return out
+
+
+def _escribir_caratula(ws, proyecto: Proyecto, perfil: Perfil, t: dict, campos: dict) -> None:
+    car = proyecto.caratula
+    dinamicas = _coords_dinamicas(campos)
+
+    _anchos(ws, t["columnas"])
+    for r, h in t["alturas_filas"].items():
+        ws.row_dimensions[int(r)].height = h
+    for coord, cel in t["celdas"].items():
+        c = ws[coord]
+        c.value = None if coord in dinamicas else cel["v"]
+        aplicar_estilo(c, cel)
+    for m in t["merges"]:
+        ws.merge_cells(m)
+
+    # REFERENCIAS
+    ref = campos["referencias"]
+    r0, r1 = ref["filas"]
+    if len(car.referencias) > r1 - r0 + 1:
+        raise ValueError(f"la carátula admite {r1 - r0 + 1} referencias, hay {len(car.referencias)}")
+    for i, rf in enumerate(car.referencias):
+        ws[f'{ref["col_codigo"]}{r0 + i}'] = rf.codigo
+        ws[f'{ref["col_titulo"]}{r0 + i}'] = rf.descripcion
+
+    # REVISIONES: la más reciente arriba, se llenan de abajo hacia arriba (lista: de la más
+    # antigua a la más nueva)
+    v0, v1 = campos["revisiones"]["filas"]
+    if len(car.revisiones) > v1 - v0 + 1:
+        raise ValueError(f"la carátula admite {v1 - v0 + 1} revisiones, hay {len(car.revisiones)}")
+    for i, rv in enumerate(car.revisiones):
+        for atributo, col in campos["revisiones"]["columnas"].items():
+            ws[f"{col}{v1 - i}"] = getattr(rv, atributo)
+
+    # Campos simples (con formato opcional: "   Lugar: {}")
+    for nombre, cfg in campos["simples"].items():
+        valor = getattr(car, nombre if nombre != "dibujo" else "dibujo")
+        fmt = cfg.get("formato")
+        ws[cfg["celda"]] = fmt.format(valor) if fmt else valor
+
+    # Número de documento: un carácter por celda, sin guiones. Llega armado (Caratula.numero_documento).
+    celdas = campos["documento"]["celdas"]
+    caracteres = car.numero_documento.replace("-", "")
+    if len(caracteres) > len(celdas):
+        raise DocumentoInvalido(
+            f"el número de documento '{car.numero_documento}' tiene {len(caracteres)} caracteres "
+            f"(sin guiones) y la plantilla admite hasta {len(celdas)}")
+    for i, coord in enumerate(celdas):
+        ws[coord] = caracteres[i] if i < len(caracteres) else None
+
+    # Hoja X de Y: el total de hojas es del perfil
+    h = campos["hoja"]
+    ws[h["celda"]] = h["formato"].format(n=1, total=perfil.datos["hojas"]["total"])
+
+    if t["area_impresion"]:
+        ws.print_area = t["area_impresion"].split("!")[-1].replace("$", "")
+    _pagina_caratula(ws, t)
+
+
+def _pagina_caratula(ws, t: dict) -> None:
+    p = t["pagina"]
+    ws.page_setup.orientation = p["orientacion"]
+    ws.page_setup.paperSize = p["papel"]
+    if p.get("escala"):
+        ws.page_setup.scale = p["escala"]
+    for k, v in t["margenes"].items():
+        setattr(ws.page_margins, k, v)
+
+
+# ---------------------------------------------------------------- API
+def escribir_xlsx(proyecto: Proyecto, perfil: Perfil, ruta: Union[str, Path],
+                  plantilla: Optional[dict] = None, incluir_caratula: bool = True) -> Path:
+    """Genera el .xlsx (hoja de carátula + hoja del listado) y devuelve la ruta escrita.
+
+    Con incluir_caratula=False el libro lleva solo la hoja del listado."""
+    t = plantilla or cargar_plantilla(perfil)
+    hojas = perfil.datos["hojas"]
+    wb = Workbook()
+    if incluir_caratula:
+        ws_car = wb.active
+        ws_car.title = hojas["caratula"]
+        _escribir_caratula(ws_car, proyecto, perfil, t["caratula"], t["caratula_campos"])
+        ws_lis = wb.create_sheet(hojas["listado"])
+    else:
+        ws_lis = wb.active
+        ws_lis.title = hojas["listado"]
+    _escribir_listado(ws_lis, proyecto, perfil, t["listado"])
+    ruta = Path(ruta)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(ruta)
+    return ruta

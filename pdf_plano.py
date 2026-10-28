@@ -1,0 +1,215 @@
+"""Lectura de planos de ingeniería (PDF) para proponer las filas del listado.
+
+Cada columna rotulada de las páginas de bornes es una señal; "Positivo/Negativo" (alimentación)
+se ignora. Las parejas Abierto/Cerrado, Remoto/Local, etc. forman una sola señal de doble bit.
+No asigna tags, offsets ni descripciones SCADA (eso es del generador) ni PLACA/ENTRADA (el
+rótulo del módulo es un dibujo, no texto). El vocabulario viene de plantillas/<id>/lectura_plano.json.
+"""
+from __future__ import annotations
+
+import json
+import re
+from collections import Counter
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Optional
+
+from modelo import Campo, Funcion, Nivel, Senal, TipoPunto
+from perfiles import Perfil
+
+RAIZ_PLANTILLAS = Path(__file__).parent / "plantillas"
+
+
+class PdfNoDisponible(RuntimeError):
+    pass
+
+
+@dataclass
+class LecturaSenal:
+    pagina: int
+    banda: int
+    funcion: Funcion
+    tipo_punto: TipoPunto
+    texto: str
+    estado_id: Optional[str] = None
+    es_reserva: bool = False
+    columnas: list[str] = field(default_factory=list)  # rótulos originales (1 o 2)
+
+
+@dataclass
+class PaginaLeida:
+    pagina: int
+    nivel: str
+    campo: str
+    senales: list[LecturaSenal]
+
+
+def cargar_config(perfil: Perfil) -> dict:
+    ruta = RAIZ_PLANTILLAS / perfil.id / "lectura_plano.json"
+    if not ruta.is_file():
+        raise FileNotFoundError(f"no existe {ruta}")
+    return json.loads(ruta.read_text(encoding="utf-8"))
+
+
+def _lineas_verticales(page, x_min: float) -> list[tuple[float, float, str]]:
+    out = []
+    for b in page.get_text("dict")["blocks"]:
+        for l in b.get("lines", []):
+            if abs(l["dir"][0]) >= 0.1:
+                continue
+            t = " ".join("".join(s["text"] for s in l["spans"]).split())
+            if len(t) > 2 and not t.isdigit() and l["bbox"][0] >= x_min:
+                out.append((l["bbox"][0], l["bbox"][1], t))
+    return out
+
+
+def _bandas(lineas, tol: float = 12.0) -> list[list[tuple[float, float, str]]]:
+    """Agrupa por la y de arranque del texto (cada módulo queda en su propia franja)."""
+    grupos: list[list] = []
+    for x, y, t in sorted(lineas, key=lambda l: l[1]):
+        if grupos and abs(y - grupos[-1][0][1]) <= tol:
+            grupos[-1].append((x, y, t))
+        else:
+            grupos.append([(x, y, t)])
+    return [sorted(g) for g in grupos]
+
+
+def _par(a: str, b: str, pares: list[dict]) -> Optional[tuple[dict, str]]:
+    """Si a y b son los dos lados de un par (mismo equipo), devuelve (par, texto base)."""
+    for p in pares:
+        s0, s1 = p["sufijos"]
+        for x, y in ((a, b), (b, a)):
+            if x.endswith(" " + s0) and y.endswith(" " + s1):
+                base = x[: -len(s0)].strip()
+                if base == y[: -len(s1)].strip():
+                    return p, base
+    return None
+
+
+def _senales_de_banda(textos: list[str], cfg: dict, pagina: int, banda: int) -> list[LecturaSenal]:
+    ign = tuple(cfg["ignorar_prefijos"])
+    utiles = [t for t in textos if not t.startswith(ign)]
+    salida = any(t.endswith(tuple(" " + w for w in cfg["palabras_salida"])) for t in utiles)
+    tipo = TipoPunto.DO if salida else TipoPunto.DI
+    res, i = [], 0
+    while i < len(utiles):
+        t = utiles[i]
+        if t.lower() == cfg["reserva"].lower():
+            res.append(LecturaSenal(pagina, banda, Funcion.RESERVA, tipo, "Reserva", None, True, [t]))
+            i += 1
+            continue
+        enc = _par(t, utiles[i + 1], cfg["pares_doble_bit"]) if i + 1 < len(utiles) else None
+        if enc:
+            par, base = enc
+            s0, s1 = par["sufijos"]
+            res.append(LecturaSenal(pagina, banda, Funcion(par["tipo"]), tipo, f"{base} {s0}/{s1}",
+                                    par["estado_id"], False, [t, utiles[i + 1]]))
+            i += 2
+            continue
+        if salida:
+            res.append(LecturaSenal(pagina, banda, Funcion.COMANDO, tipo, t, cfg["comando_estado_id"], False, [t]))
+        else:
+            res.append(LecturaSenal(pagina, banda, Funcion.ALARMAS, tipo, t, cfg["alarma_estado_id"], False, [t]))
+        i += 1
+    return res
+
+
+def _adivinar(textos: list[str]) -> tuple[str, str]:
+    campos = Counter(m.group(1).zfill(2) for t in textos
+                     for m in re.finditer(r"(?i)campo\s?0?(\d{1,2})", t))
+    niveles = Counter(m.group(1).replace(",", ".").upper() + "KV" for t in textos
+                      for m in re.finditer(r"(?i)(\d+(?:[.,]\d+)?)\s?k\s?v", t))
+    return (niveles.most_common(1)[0][0] if niveles else "",
+            campos.most_common(1)[0][0] if campos else "")
+
+
+def leer_plano(ruta, perfil: Perfil, avance: Optional[Callable[[int, int], None]] = None,
+               solo_paginas: Optional[set[int]] = None) -> list[PaginaLeida]:
+    try:
+        import pymupdf
+    except ImportError as e:
+        raise PdfNoDisponible("falta pymupdf (python -m pip install pymupdf)") from e
+    cfg = cargar_config(perfil)
+    ign = tuple(cfg["ignorar_prefijos"])
+    paginas: list[PaginaLeida] = []
+    with pymupdf.open(str(ruta)) as doc:
+        for n, page in enumerate(doc, start=1):
+            if avance:
+                avance(n, len(doc))
+            if solo_paginas is not None and n not in solo_paginas:
+                continue
+            # el cajetín del plano queda a la izquierda: se descarta por posición relativa al ancho
+            lineas = _lineas_verticales(page, cfg["x_minimo_rel"] * page.rect.width)
+            # página de bornes = muchas columnas rotuladas + alimentación (Positivo/Negativo) o reservas
+            marcas = sum(t.startswith(ign) or t.lower() == cfg["reserva"].lower() for _, _, t in lineas)
+            if len(lineas) < cfg["min_columnas_pagina"] or marcas < 2:
+                continue
+            senales: list[LecturaSenal] = []
+            for k, banda in enumerate(_bandas(lineas), start=1):
+                senales += _senales_de_banda([t for _, _, t in banda], cfg, n, k)
+            nivel, campo = _adivinar([t for _, _, t in lineas])
+            if senales:
+                paginas.append(PaginaLeida(n, nivel, campo, senales))
+    return paginas
+
+
+def _senal(ls: LecturaSenal, perfil: Perfil) -> Senal:
+    s = Senal(funcion=ls.funcion, tipo_punto=ls.tipo_punto, observaciones=ls.texto,
+              estado_id=ls.estado_id, es_reserva=ls.es_reserva)
+    if ls.estado_id:
+        e = perfil.estado(ls.estado_id)
+        s.s0, s.s1, s.s2, s.s3 = e["s0"], e["s1"], e["s2"], e["s3"]
+    return s
+
+
+def codigo_nivel(nombre: str, cfg: dict) -> str:
+    """Dígito del tag según la tensión del nivel ('33KV' -> '2'); '' si no se reconoce."""
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*k\s*v", nombre, re.I)
+    if not m:
+        return ""
+    kv = float(m.group(1).replace(",", "."))
+    for regla in cfg.get("codigo_nivel", []):
+        if any(abs(kv - x) < 1e-6 for x in regla["kv"]):
+            return regla["codigo"]
+    return ""
+
+
+def a_niveles(paginas: list[PaginaLeida], perfil: Perfil,
+              destinos: Optional[dict[int, tuple]] = None, lugar: str = "") -> list[Nivel]:
+    """Arma Nivel > Campo > Senal.
+
+    `destinos` = {pagina: (nivel, campo, descripcion[, controlador[, nombre del campo]])} editados por el usuario.
+    `lugar` = nombre por defecto del campo en el prefijo (ej. 'LC' -> '303LC'); `nombre` lo pisa por campo."""
+    cfg = cargar_config(perfil)
+    orden = {f: i for i, f in enumerate(perfil.orden_funciones)}
+    niveles: dict[str, Nivel] = {}
+    campos: dict[tuple[str, str], Campo] = {}
+    reservas: list[tuple[str, str, Senal]] = []
+    for pg in paginas:
+        nivel, campo, desc, *resto = (destinos or {}).get(pg.pagina, (pg.nivel, pg.campo, ""))
+        nv = niveles.setdefault(nivel, Nivel(nombre=nivel, codigo=codigo_nivel(nivel, cfg)))
+        cp = campos.get((nivel, campo))
+        if cp is None:
+            nombre = (resto[1] if len(resto) > 1 and resto[1] else lugar)  # LC, GTR01, TRAFO1…
+            prefijo = f"{nv.codigo}{campo}{nombre}" if nombre else ""
+            cp = campos[(nivel, campo)] = Campo(numero=campo, descripcion=desc, prefijo=prefijo,
+                                                controlador=resto[0] if resto else "")
+            nv.campos.append(cp)
+        for ls in pg.senales:
+            if ls.es_reserva:  # van todas juntas al final de la hoja; la descripción aclara el campo
+                reservas.append((nivel, campo, _senal(ls, perfil)))
+            else:
+                cp.senales.append(_senal(ls, perfil))
+    for cp in campos.values():  # función en el orden fijo del perfil
+        cp.senales.sort(key=lambda s: orden.get(s.funcion.value, 99))
+    for nv in niveles.values():  # un campo (o nivel) con solo reservas no tiene filas propias
+        nv.campos = [c for c in nv.campos if c.senales]
+    resultado = [nv for nv in niveles.values() if nv.campos]
+    if reservas:
+        con_nivel = len(niveles) > 1  # con varios niveles el número de campo solo no alcanza
+        for nivel, campo, s in reservas:
+            s.observaciones = (f"Reserva {nivel + ' ' if con_nivel and nivel else ''}"
+                               f"Campo {campo} {s.tipo_punto.value}")
+        resultado.append(Nivel(nombre="RESERVAS",
+                               campos=[Campo(numero="", senales=[s for _, _, s in reservas])]))
+    return resultado

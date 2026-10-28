@@ -107,6 +107,13 @@ class Senal:
     medicion_codigo: Optional[str] = None  # sufijo de medición (AR, AU, AP...)
     es_reserva: bool = False
     fijos: list[str] = field(default_factory=list)  # campos editados a mano: el generador no los pisa
+    # Enlace señalización <-> comando: la señalización y su comando llevan el mismo valor (ej. "Seccionador 329SA03").
+    # Comparten tag y offset (el tag termina en C). Vacío = sin pareja.
+    par: str = ""
+    # Una señalización de doble bit ocupa 2 filas en el Excel: la 2ª (sin tag ni descripciones) la crea el
+    # generador con segunda_fila=True y su texto sale de obs_segunda_fila de la 1ª (ej. "... Cerrado").
+    obs_segunda_fila: str = ""
+    segunda_fila: bool = False
 
     @classmethod
     def from_dict(cls, d: dict) -> "Senal":
@@ -134,6 +141,15 @@ class Nivel:
 
 
 @dataclass
+class Modulo:
+    """Módulo (placa) de entradas/salidas de la UTR según el plano de ingeniería (ej. A3.4, DI, 24 entradas)."""
+    placa: str
+    tipo: str = "DI"          # DI o DO
+    entradas: int = 24        # cantidad de entradas/salidas del módulo
+    desde: int = 1            # primera entrada a usar
+
+
+@dataclass
 class Proyecto:
     perfil_id: str
     caratula: Caratula = field(default_factory=Caratula)
@@ -141,6 +157,8 @@ class Proyecto:
     # El software siempre pregunta desde qué número arrancar; un contador por tipo de punto.
     item_inicial: int = 1
     offsets_iniciales: dict[str, int] = field(default_factory=dict)
+    # Módulos de la UTR en el orden en que se consumen al asignar PLACA/ENTRADA (ver asignacion_utr.py)
+    modulos: list[Modulo] = field(default_factory=list)
 
     def todas_las_senales(self) -> list[Senal]:
         return [s for n in self.niveles for c in n.campos for s in c.senales]
@@ -173,6 +191,7 @@ class Proyecto:
             niveles=niveles,
             item_inicial=d.get("item_inicial", 1),
             offsets_iniciales=dict(d.get("offsets_iniciales", {})),
+            modulos=[Modulo(**m) for m in d.get("modulos", [])],
         )
 
     def guardar(self, ruta: Union[str, Path]) -> None:

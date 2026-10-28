@@ -1,0 +1,22 @@
+{
+  "_nota": "Vocabulario para leer los planos de ingeniería (PDF) de este cliente. Es una propuesta: el usuario revisa el resultado en la app.",
+  "ignorar_prefijos": ["Positivo", "Negativo"],
+  "reserva": "Reserva",
+  "min_columnas_pagina": 6,
+  "x_minimo_rel": 0.125,
+  "palabras_salida": ["Cierre", "Apertura"],
+  "pares_doble_bit": [
+    { "sufijos": ["Abierto", "Cerrado"], "estado_id": "sen_ab_ce", "tipo": "SEÑALIZACION" },
+    { "sufijos": ["Remoto", "Local"], "estado_id": "sen_loc_rem", "tipo": "SEÑALIZACION" },
+    { "sufijos": ["en D", "en T"], "estado_id": "sen_dist_tele", "tipo": "SEÑALIZACION" },
+    { "sufijos": ["Cierre", "Apertura"], "estado_id": "com_ab_ce", "tipo": "COMANDO" }
+  ],
+  "_codigo_nivel": "Dígito de nivel de tensión del tag (regla del usuario 2026-10-28). PC-A: mover al perfil si corresponde.",
+  "codigo_nivel": [
+    { "codigo": "3", "kv": [132, 66] },
+    { "codigo": "2", "kv": [33] },
+    { "codigo": "1", "kv": [13.2, 13, 6.6] }
+  ],
+  "alarma_estado_id": "alarma_actuo",
+  "comando_estado_id": "com_ab_ce"
+}
