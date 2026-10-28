@@ -1,22 +1,94 @@
 {
   "_nota": "Vocabulario para leer los planos de ingeniería (PDF) de este cliente. Es una propuesta: el usuario la revisa en la app.",
-  "ignorar_prefijos": ["Positivo", "Negativo"],
+  "ignorar_prefijos": [
+    "Positivo",
+    "Negativo"
+  ],
   "reserva": "Reserva",
   "min_columnas_pagina": 6,
   "x_minimo_rel": 0.125,
-  "palabras_salida": ["Cierre", "Apertura"],
+  "palabras_salida": [
+    "Cierre",
+    "Apertura"
+  ],
   "_pares": "Los sufijos van en el orden de los estados: la 1ª fila de la señal es el primero (Abierto, Local, Apertura…).",
   "pares_doble_bit": [
-    { "sufijos": ["Abierto", "Cerrado"], "tipo": "SEÑALIZACION" },
-    { "sufijos": ["Local", "Remoto"], "tipo": "SEÑALIZACION" },
-    { "sufijos": ["en D", "en T"], "tipo": "SEÑALIZACION" },
-    { "sufijos": ["Apertura", "Cierre"], "tipo": "COMANDO" }
+    {
+      "sufijos": [
+        "Abierto",
+        "Cerrado"
+      ],
+      "tipo": "SEÑALIZACION"
+    },
+    {
+      "sufijos": [
+        "Local",
+        "Remoto"
+      ],
+      "tipo": "SEÑALIZACION"
+    },
+    {
+      "sufijos": [
+        "en D",
+        "en T"
+      ],
+      "tipo": "SEÑALIZACION"
+    },
+    {
+      "sufijos": [
+        "Apertura",
+        "Cierre"
+      ],
+      "tipo": "COMANDO"
+    }
   ],
   "_codigo_nivel": "Dígito de nivel de tensión (regla del usuario 2026-10-28): 132 y 66 kV = 3; 33 kV = 2; 13,2 / 13 / 6,6 kV = 1.",
   "codigo_nivel": [
-    { "codigo": "3", "kv": [132, 66] },
-    { "codigo": "2", "kv": [33] },
-    { "codigo": "1", "kv": [13.2, 13, 6.6] }
+    {
+      "codigo": "3",
+      "kv": [
+        132,
+        66
+      ]
+    },
+    {
+      "codigo": "2",
+      "kv": [
+        33
+      ]
+    },
+    {
+      "codigo": "1",
+      "kv": [
+        13.2,
+        13,
+        6.6
+      ]
+    }
   ],
-  "controlador": "SEL-2241-{nivel}"
+  "controlador": "SEL-2241-{nivel}",
+  "_rele": "Las señales cuyo texto coincide con estos patrones llevan el relé de protección del campo (se pide al cargar el plano).",
+  "rele_patrones": [
+    "^Prot\\b"
+  ],
+  "_expansiones": "Abreviaturas del plano -> palabra completa (DESC. HMI lo más completa posible).",
+  "expansiones": {
+    "Secc": "Seccionador",
+    "Prot": "Proteccion",
+    "Ten": "Tension",
+    "Conj": "Conjunto",
+    "Cmdo": "Comando",
+    "F Motriz": "Fuerza Motriz"
+  },
+  "_abreviaturas_tag": "Palabra completa -> abreviatura en el TAG HMI (legible para una persona).",
+  "abreviaturas_tag": {
+    "Falta": "F",
+    "Auxiliar": "Aux",
+    "Proteccion": "Prot",
+    "Sobrecorriente": "Sobrec",
+    "Principal": "Ppal",
+    "Respaldo": "Resp",
+    "Diferencial": "Dif",
+    "Fuerza": "Fza"
+  }
 }

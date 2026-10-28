@@ -137,6 +137,16 @@ class TestVentana(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.app._asignar(nivel, c, c.senales[0], "funcion", "otra cosa")
 
+    def test_cambiar_el_nivel_cambia_la_tension_del_controlador(self):
+        c = self._campo()
+        nivel = self.app.niveles[0]
+        c.senales[0].controlador = "SCHNEIDER P142_C04"  # un relé no lleva tensión
+        self.app._asignar(nivel, c, c.senales[0], "nivel", "132KV")
+        self.assertEqual((c.controlador, c.senales[1].controlador), ("SEL-2241-132kV", ""))
+        self.assertEqual(c.senales[0].controlador, "SCHNEIDER P142_C04")
+        self.app._asignar(nivel, c, c.senales[0], "nivel", "6,6KV")
+        self.assertEqual(c.controlador, "SEL-2241-6,6kV")
+
     def test_doble_bit_se_mueve_y_se_borra_como_bloque(self):
         from tkinter import messagebox
         c = self._campo()

@@ -18,7 +18,7 @@ from modelo import Campo, Funcion, Nivel, Proyecto, Senal
 # (clave, título, ancho, editable)
 COLUMNAS = (
     ("item", "ITEM", 50, False), ("nivel", "NIVEL", 70, True), ("descrip", "DESCRIP", 170, True),
-    ("controlador", "CONTROLADOR", 130, True), ("funcion", "FUNCION", 100, True),
+    ("controlador", "CONTROLADOR/DISPOSITIVO DE CAMPO", 215, True), ("funcion", "FUNCION", 100, True),
     ("tag_hmi", "TAG (HMI)", 260, True), ("desc_hmi", "DESC. HMI", 330, True),
 )
 ULTIMA_COLUMNA = "G"
@@ -67,32 +67,35 @@ class DialogoPaginas(tk.Toplevel):
         self.filas: list[tuple] = []
         f = ttk.Frame(self, padding=10)
         f.pack()
-        ttk.Label(f, text="Revisá los datos de cada campo. El NOMBRE (ej. LC, GTR01) forma el prefijo de DESC. HMI.",
-                  foreground="#555").grid(row=0, column=0, columnspan=7, sticky="w", pady=(0, 6))
-        for j, t in enumerate(("PÁG.", "NIVEL", "CAMPO", "NOMBRE", "DESCRIPCIÓN DEL CAMPO", "CONTROLADOR", "SEÑ.")):
+        ttk.Label(f, text="Revisá los datos de cada campo. El NOMBRE (ej. LC, GTR01) forma el prefijo de DESC. HMI. "
+                          "Las señales de protección (Prot. …) llevan el relé del campo.",
+                  foreground="#555").grid(row=0, column=0, columnspan=8, sticky="w", pady=(0, 6))
+        for j, t in enumerate(("PÁG.", "NIVEL", "CAMPO", "NOMBRE", "DESCRIPCIÓN DEL CAMPO", "CONTROLADOR",
+                               "RELÉ DE PROTECCIÓN", "SEÑ.")):
             ttk.Label(f, text=t, font=("Segoe UI", 8, "bold")).grid(row=1, column=j, padx=2, sticky="w")
         for i, pg in enumerate(paginas, start=2):
             v = [tk.StringVar(value=pg.nivel), tk.StringVar(value=pg.campo), tk.StringVar(value=lugar),
-                 tk.StringVar(), tk.StringVar(value=pdf_plano.controlador_por_defecto(pg.nivel, cfg))]
+                 tk.StringVar(), tk.StringVar(value=pdf_plano.controlador_por_defecto(pg.nivel, cfg)),
+                 tk.StringVar()]
             ttk.Label(f, text=str(pg.pagina)).grid(row=i, column=0, padx=2)
-            for j, (var, w) in enumerate(zip(v, (8, 6, 8, 30, 20)), start=1):
+            for j, (var, w) in enumerate(zip(v, (8, 6, 8, 28, 18, 22)), start=1):
                 ttk.Entry(f, textvariable=var, width=w).grid(row=i, column=j, padx=2, pady=1)
-            ttk.Label(f, text=str(len(pg.senales))).grid(row=i, column=6, padx=2)
+            ttk.Label(f, text=str(len(pg.senales))).grid(row=i, column=7, padx=2)
             self.filas.append((pg.pagina, *v))
         b = ttk.Frame(f)
-        b.grid(row=len(paginas) + 2, column=0, columnspan=7, sticky="e", pady=(8, 0))
+        b.grid(row=len(paginas) + 2, column=0, columnspan=8, sticky="e", pady=(8, 0))
         ttk.Button(b, text="Cancelar", command=self.destroy).pack(side="right", padx=4)
         ttk.Button(b, text="Armar listado", command=self._ok).pack(side="right")
         self.grab_set()
 
     def _ok(self) -> None:
         destinos = {}
-        for pagina, niv, cam, nom, des, ctl in self.filas:
+        for pagina, niv, cam, nom, des, ctl, rele in self.filas:
             if not niv.get().strip() or not cam.get().strip():
                 messagebox.showwarning("Falta dato", f"Completá nivel y campo en la página {pagina}.", parent=self)
                 return
             destinos[pagina] = (niv.get().strip(), cam.get().strip(), des.get().strip(), ctl.get().strip(),
-                                nom.get().strip())
+                                nom.get().strip(), rele.get().strip())
         self.resultado = destinos
         self.destroy()
 
@@ -317,6 +320,10 @@ class App(tk.Tk):
         if clave == "nivel":  # el nivel se comparte con todo su grupo (celda combinada)
             nivel.nombre = texto
             nivel.codigo = pdf_plano.codigo_nivel(texto, self.cfg)
+            for c in nivel.campos:  # la tensión al final del controlador sigue al nivel (SEL-2241-33kV -> -132kV)
+                c.controlador = pdf_plano.con_tension_del_nivel(c.controlador, texto)
+                for x in c.senales:
+                    x.controlador = pdf_plano.con_tension_del_nivel(x.controlador, texto)
         elif clave == "descrip":
             campo.descripcion = texto
         elif clave == "funcion":

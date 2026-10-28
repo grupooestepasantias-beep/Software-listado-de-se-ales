@@ -60,6 +60,25 @@ class TestClasificacion(unittest.TestCase):
     def test_controlador_por_defecto(self):
         self.assertEqual(pdf_plano.controlador_por_defecto("33KV", self.cfg), "SEL-2241-33kV")
         self.assertEqual(pdf_plano.controlador_por_defecto("132 KV", self.cfg), "SEL-2241-132kV")
+        self.assertEqual(pdf_plano.controlador_por_defecto("6.6KV", self.cfg), "SEL-2241-6,6kV")  # coma, como el ETAP
+
+    def test_la_tension_del_controlador_sigue_al_nivel(self):
+        f = pdf_plano.con_tension_del_nivel
+        self.assertEqual(f("SEL-2241-33kV", "132KV"), "SEL-2241-132kV")
+        self.assertEqual(f("SEL-2241-132kV", "6,6KV"), "SEL-2241-6,6kV")
+        self.assertEqual(f("SCHNEIDER P142_C04", "132KV"), "SCHNEIDER P142_C04")  # un relé no lleva tensión
+        self.assertEqual(f("SEL-3555", "132KV"), "SEL-3555")
+        self.assertEqual(f("SEL-2241-33kV", "RESERVAS"), "SEL-2241-33kV")  # nivel sin tensión: no cambia
+
+    def test_las_senales_de_proteccion_llevan_el_rele_del_campo(self):
+        niv = self.armar(["Prot. Campo 04 33 KV Falla Interna", "Interruptor 25204 Falta Fuerza Motriz",
+                          "Campo 04 33KV Falla Multimedidor", "2TV04- Falta Vca Prot"],
+                         destinos={5: ("33KV", "04", "", "", "AP", "SCHNEIDER P142_C04")})
+        por = {s.desc_hmi: s.controlador for s in niv[0].campos[0].senales}
+        self.assertEqual(por["204AP Proteccion Campo 04 33 KV Falla Interna"], "SCHNEIDER P142_C04")
+        self.assertEqual(por["204AP Interruptor 25204 Falta Fuerza Motriz"], "SEL-2241-33kV")
+        self.assertEqual(por["204AP Campo 04 33KV Falla Multimedidor"], "SEL-2241-33kV")
+        self.assertEqual(por["204AP 2TV04- Falta Vca Proteccion"], "SEL-2241-33kV")  # 'Prot' no está al comienzo
 
     def armar(self, textos, **kw):
         return pdf_plano.a_niveles([pdf_plano.PaginaLeida(5, "33KV", "04", self.banda(textos, 5))], self.perfil, **kw)
@@ -72,7 +91,7 @@ class TestClasificacion(unittest.TestCase):
                          ("33KV", "2", "Campo 04", "204AP", "SEL-2241-33kV"))
         a, s1, s2 = c.senales  # alarma primero (orden fijo), luego la señalización con sus 2 filas
         self.assertEqual((a.funcion, a.controlador, a.tag_hmi, a.desc_hmi),
-                         (Funcion.ALARMAS, "SEL-2241-33kV", "Interruptor_25204_Falta_Fuerza_Motriz",
+                         (Funcion.ALARMAS, "SEL-2241-33kV", "Interruptor_25204_F_Fza_Motriz",
                           "204AP Interruptor 25204 Falta Fuerza Motriz"))
         self.assertEqual((s1.tag_hmi, s1.desc_hmi), ("Seccionador_229SL04_Abierto_Cerrado",
                                                       "204AP Seccionador 229SL04 Abierto/Cerrado"))

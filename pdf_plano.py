@@ -160,18 +160,41 @@ def codigo_nivel(nombre: str, cfg: dict) -> str:
     return ""
 
 
+def tension_texto(nivel: str) -> str:
+    """'33KV' -> '33kV'; '6.6 KV' -> '6,6kV' (coma decimal, como el ETAP); '' si el nivel no trae tensión."""
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*k\s*v", nivel, re.I)
+    return f"{m.group(1).replace('.', ',')}kV" if m else ""
+
+
 def controlador_por_defecto(nivel: str, cfg: dict) -> str:
-    """'33KV' -> 'SEL-2241-33kV' (regla del cliente; se puede cambiar fila por fila)."""
-    kv = re.sub(r"(?i)\s*k\s*v$", "kV", nivel.strip())
-    return cfg.get("controlador", "").format(nivel=kv) if nivel else ""
+    """'33KV' -> 'SEL-2241-33kV': el final es la tensión del nivel (regla del cliente; editable por fila)."""
+    kv = tension_texto(nivel)
+    return cfg.get("controlador", "").format(nivel=kv) if kv else ""
 
 
-def _filas(ls: LecturaSenal, prefijo: str, controlador: str) -> list[Senal]:
+def con_tension_del_nivel(controlador: str, nivel: str) -> str:
+    """Cambia la tensión al final de un controlador ('SEL-2241-33kV') por la del nivel. Si el controlador no
+    termina en una tensión (un relé, SEL-3555…) queda igual."""
+    kv = tension_texto(nivel)
+    if not kv or not re.search(r"-\d+(?:[.,]\d+)?kV$", controlador):
+        return controlador
+    return re.sub(r"\d+(?:[.,]\d+)?kV$", kv, controlador)
+
+
+def _controlador(ls: LecturaSenal, controlador: str, rele: str, cfg: dict) -> str:
+    """Las señales de protección (patrones del cliente) llevan el relé del campo; el resto, el controlador del campo."""
+    if rele and any(re.search(p, ls.columnas[0] if ls.columnas else ls.texto, re.I) for p in cfg.get("rele_patrones", [])):
+        return rele
+    return controlador
+
+
+def _filas(ls: LecturaSenal, prefijo: str, controlador: str, cfg: dict, rele: str = "") -> list[Senal]:
     """Filas del listado de una señal: 1, o 2 si es doble bit (la 2ª sin TAG ni DESC. HMI)."""
+    controlador = _controlador(ls, controlador, rele, cfg)
     if ls.es_reserva:
         return [Senal(funcion=Funcion.RESERVA, controlador=controlador, tag_hmi="N/A", es_reserva=True)]
-    s = Senal(funcion=ls.funcion, controlador=controlador, tag_hmi=tag_hmi_desde(ls.texto),
-              desc_hmi=desc_hmi_desde(prefijo, ls.texto))
+    s = Senal(funcion=ls.funcion, controlador=controlador, tag_hmi=tag_hmi_desde(ls.texto, cfg),
+              desc_hmi=desc_hmi_desde(prefijo, ls.texto, cfg))
     filas = [s]
     if len(ls.columnas) == 2:
         filas.append(Senal(funcion=ls.funcion, controlador=controlador, segunda_fila=True))
@@ -182,7 +205,7 @@ def a_niveles(paginas: list[PaginaLeida], perfil: Perfil,
               destinos: Optional[dict[int, tuple]] = None, lugar: str = "") -> list[Nivel]:
     """Arma Nivel > Campo > Senal.
 
-    `destinos` = {pagina: (nivel, campo, descripcion[, controlador[, nombre del campo]])} editados por el usuario.
+    `destinos` = {pagina: (nivel, campo, descripcion[, controlador[, nombre del campo[, relé de protección]]])}.
     `lugar` = nombre por defecto del campo en el prefijo (ej. 'LC' -> '204LC'); `nombre` lo pisa por campo."""
     cfg = cargar_config(perfil)
     orden = {f: i for i, f in enumerate(perfil.orden_funciones)}
@@ -199,8 +222,9 @@ def a_niveles(paginas: list[PaginaLeida], perfil: Perfil,
             cp = campos[(nivel, campo)] = Campo(numero=campo, descripcion=desc,
                                                 prefijo=f"{nv.codigo}{campo}{nombre}", controlador=ctl)
             nv.campos.append(cp)
+        rele = resto[2] if len(resto) > 2 else ""
         for ls in pg.senales:
-            filas = _filas(ls, cp.prefijo, cp.controlador)
+            filas = _filas(ls, cp.prefijo, cp.controlador, cfg, rele)
             if ls.es_reserva:  # van todas juntas al final de la hoja
                 reservas.append((nivel, campo, filas[0]))
             else:

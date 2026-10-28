@@ -58,3 +58,9 @@ La PC-A es el usuario AD.GO\Pasante2 y la PC-B es el AD.GO\Pasante3. (La contras
 - [ ] Salidas (comandos/DO): por ahora sin PLACA/ENTRADA. Cuando se retomen: ¿el par es el N.º de relé de salida (borne/2, ej. 9/10) o los bornes impresos?
 - [ ] Mediciones (AI): ¿se leen de otro plano/página? El plano 6402 no las trae en las páginas de bornes.
 - [ ] Controladores de relés de protección (SCHNEIDER P543…) y comunicaciones (RTAC, TAPCON, EXEMYS del Excel de materiales): ¿se cargan a mano fila por fila o hay una lista por tablero?
+
+## Tabla A-G: tags, descripciones y controladores (PC-B, 2026-10-28)
+- [x] Controlador de protecciones cableadas = relé del campo; multimedidor y alimentación = SEL-2241 + tensión; TAG = descripción abreviada (ej. Seccionador_229SL04_F_Tension_Aux_...).
+- [ ] ¿Qué otras abreviaturas del plano se expanden en la DESC. HMI? Hoy: Secc., Prot., Ten., Conj., Cmdo, F Motriz. Candidatas: SSAA (Servicios Auxiliares), Vca/VCC, QF4/QM4/QC4 ACTUADA, TI/TV, "en D"/"en T", Med.
+- [ ] En el TAG, "Fuerza" se abrevia Fza (vocabulario del ETAP): "Seccionador_229SL04_F_Tension_Aux_Fza_Motriz". ¿O preferís F_Motriz?
+- [ ] ¿Hay un largo máximo para TAG y DESC. HMI?
