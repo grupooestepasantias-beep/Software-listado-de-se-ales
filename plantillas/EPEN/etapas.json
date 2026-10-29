@@ -1,4 +1,0 @@
-{
-  "_nota": "Etapas del desarrollo. Las claves de 'scada' (columnas H-O del Excel) no se muestran ni se escriben hasta pulir la etapa siguiente.",
-  "scada": ["tag_scada", "offset", "desc_scada", "s0", "s1", "s2", "s3", "unidad"]
-}

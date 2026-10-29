@@ -280,6 +280,8 @@ def _escribir_caratula(ws, proyecto: Proyecto, perfil: Perfil, t: dict, campos: 
     if t["area_impresion"]:
         ws.print_area = t["area_impresion"].split("!")[-1].replace("$", "")
     _pagina_caratula(ws, t)
+    _ajustar_caratula(ws)
+    _agregar_logos(ws, car)
 
 
 def _pagina_caratula(ws, t: dict) -> None:
@@ -290,6 +292,98 @@ def _pagina_caratula(ws, t: dict) -> None:
         ws.page_setup.scale = p["escala"]
     for k, v in t["margenes"].items():
         setattr(ws.page_margins, k, v)
+
+
+def _ajustar_caratula(ws) -> None:
+    """La carátula se ve e imprime en UNA hoja A4 vertical, con las alturas/anchos por defecto del ETAP."""
+    from openpyxl.utils import get_column_letter
+    ws.sheet_format.defaultRowHeight = 12.75
+    ws.sheet_format.defaultColWidth = 11.42578125
+    # En el ETAP las columnas C..AD comparten el ancho de la C (grupo C:AD); la plantilla solo guardó la C.
+    ancho_c = ws.column_dimensions["C"].width
+    for i in range(4, 31):
+        ws.column_dimensions[get_column_letter(i)].width = ancho_c
+    ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+    ws.print_options.verticalCentered = True
+
+
+# Recuadros de los logos en la carátula del ETAP: (col, desplazamiento EMU, fila, desplazamiento EMU; desde 0).
+# La imagen elegida se escala para entrar en el recuadro SIN deformarse, anclada arriba a la izquierda.
+CAJAS_LOGO = {
+    "logo_cliente": {"desde": (0, 180975, 31, 47625), "tam": (752475, 742950)},
+    "logo_proyectista": {"desde": (0, 22412, 45, 27945), "hasta": (1, 907678, 48, 123264)},
+}
+_EMU_PX, _EMU_PT = 9525, 12700
+FORMATOS_IMAGEN = (".png", ".jpg", ".jpeg", ".gif", ".bmp")
+
+
+def _tam_caja(ws, caja: dict) -> tuple[int, int]:
+    """Ancho y alto del recuadro en EMU (las columnas y filas ya tienen su ancho/alto final)."""
+    from openpyxl.utils import get_column_letter
+    if "tam" in caja:
+        return caja["tam"]
+    c0, co0, r0, ro0 = caja["desde"]
+    c1, co1, r1, ro1 = caja["hasta"]
+
+    def ancho(i):
+        w = ws.column_dimensions[get_column_letter(i + 1)].width or ws.sheet_format.defaultColWidth or 8.43
+        return int((w * 7 + 5) * _EMU_PX)
+
+    def alto(i):
+        return int((ws.row_dimensions[i + 1].height or ws.sheet_format.defaultRowHeight or 15) * _EMU_PT)
+
+    return (sum(ancho(i) for i in range(c0, c1)) - co0 + co1, sum(alto(i) for i in range(r0, r1)) - ro0 + ro1)
+
+
+def validar_imagen(ruta: str, nombre: str) -> list[str]:
+    """Problemas de un logo ('' = sin logo, es válido)."""
+    if not ruta:
+        return []
+    p = Path(ruta)
+    if not p.is_file():
+        return [f"{nombre}: no se encuentra el archivo {ruta}"]
+    if p.suffix.lower() not in FORMATOS_IMAGEN:
+        return [f"{nombre}: formato no admitido ({p.suffix}); usá {', '.join(FORMATOS_IMAGEN)}"]
+    try:
+        from PIL import Image as PILImage
+        with PILImage.open(p) as im:
+            im.verify()
+    except Exception:
+        return [f"{nombre}: el archivo no es una imagen válida"]
+    return []
+
+
+def _agregar_logos(ws, car) -> None:
+    """Logos elegidos por el usuario (Caratula.logo_cliente / logo_proyectista; '' = sin logo)."""
+    import io
+
+    from openpyxl.drawing.image import Image
+    from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
+    from openpyxl.drawing.xdr import XDRPositiveSize2D
+    from PIL import Image as PILImage
+    for clave, caja in CAJAS_LOGO.items():
+        ruta = getattr(car, clave, "") or ""
+        if not ruta:
+            continue
+        problemas = validar_imagen(ruta, clave)
+        if problemas:
+            raise ValueError(problemas[0])
+        with PILImage.open(ruta) as im:  # se achica si es enorme (máx. 500 px de lado) y va como PNG
+            im = im.convert("RGBA") if im.mode in ("P", "LA", "RGBA") else im.convert("RGB")
+            im.thumbnail((500, 500))
+            w, h = im.size
+            buf = io.BytesIO()
+            im.save(buf, format="PNG")
+            buf.seek(0)
+        cw, ch = _tam_caja(ws, caja)
+        escala = min(cw / w, ch / h)
+        c, co, r, ro = caja["desde"]
+        img = Image(buf)
+        img.anchor = OneCellAnchor(_from=AnchorMarker(col=c, colOff=co, row=r, rowOff=ro),
+                                   ext=XDRPositiveSize2D(int(w * escala), int(h * escala)))
+        ws.add_image(img)
 
 
 # ---------------------------------------------------------------- API

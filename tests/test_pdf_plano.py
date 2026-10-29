@@ -98,6 +98,40 @@ class TestClasificacion(unittest.TestCase):
         self.assertEqual((s2.segunda_fila, s2.funcion, s2.controlador, s2.tag_hmi, s2.desc_hmi),
                          (True, Funcion.SENALIZACION, "SEL-2241-33kV", "", ""))
 
+    def test_mediciones_del_campo_al_final_con_el_estilo_del_etap(self):
+        senales = (self.banda(["Interruptor 25204 Falta Fuerza Motriz"], 5)
+                   + self.banda(["Seccionador 229SL04 Apertura", "Seccionador 229SL04 Cierre"], 5))  # 2 módulos
+        pg = pdf_plano.PaginaLeida(5, "33KV", "04", senales, mediciones=True)
+        niv = pdf_plano.a_niveles([pg], self.perfil, destinos={5: ("33KV", "04", "", "", "AP")})
+        c = niv[0].campos[0]
+        self.assertEqual([s.funcion for s in c.senales][:3], [Funcion.ALARMAS, Funcion.COMANDO, Funcion.COMANDO])
+        med = c.senales[3:]  # alarma, comando (2 filas) y al final las mediciones
+        self.assertEqual(len(med), 13)
+        self.assertTrue(all(s.funcion == Funcion.MEDICION and s.controlador == "ION 7400 / SCHNEIDER P142" for s in med))
+        self.assertEqual((med[0].desc_hmi, med[0].tag_hmi), ("204AP TENSION CAMPO 04 33kV FASE R",
+                                                             "TENSION_CAMPO_04_33kV_FASE_R"))
+        self.assertEqual(med[-1].desc_hmi, "204AP CORRIENTE PROMEDIO CAMPO 04 33kV")
+        self.assertEqual(med[7].desc_hmi, "204AP ANGULO DE FASE TOTAL CAMPO 04 33kV")
+
+    def test_controlador_con_la_tension_del_nivel(self):
+        f = pdf_plano.controlador_con_tension
+        self.assertEqual(f("SEL-2241", "33KV"), "SEL-2241-33kV")
+        self.assertEqual(f("SEL-2241", "6.6KV"), "SEL-2241-6,6kV")
+        self.assertEqual(f("SEL-2241-132kV", "33KV"), "SEL-2241-132kV")  # ya la trae
+        self.assertEqual(f("SM_CPU866e", "RESERVAS"), "SM_CPU866e")      # nivel sin tensión
+
+    def test_sin_multimedidor_no_hay_mediciones_salvo_que_se_pidan(self):
+        pg = pdf_plano.PaginaLeida(5, "33KV", "04", self.banda(["Interruptor 25204 Falta Fuerza Motriz"], 5))
+        self.assertEqual(len(pdf_plano.a_niveles([pg], self.perfil)[0].campos[0].senales), 1)
+        pedidas = pdf_plano.a_niveles([pg], self.perfil, destinos={5: ("33KV", "04", "", "", "", "", True)})
+        self.assertEqual(len(pedidas[0].campos[0].senales), 14)
+
+    def test_las_mediciones_no_se_repiten_si_el_campo_tiene_varias_paginas(self):
+        a = pdf_plano.PaginaLeida(5, "33KV", "04", self.banda(["Eq 1 Falla"], 5), mediciones=True)
+        b = pdf_plano.PaginaLeida(6, "33KV", "04", self.banda(["Eq 2 Falla"], 6), mediciones=True)
+        c = pdf_plano.a_niveles([a, b], self.perfil)[0].campos[0]
+        self.assertEqual(sum(s.funcion == Funcion.MEDICION for s in c.senales), 13)
+
     def test_reservas_juntas_al_final_con_el_campo_en_la_descripcion(self):
         a = pdf_plano.PaginaLeida(1, "33KV", "04", self.banda(["Reserva", "Eq 1 Falla"], 1))
         b = pdf_plano.PaginaLeida(2, "132KV", "04", self.banda(["Reserva", "Eq 2 Falla"], 2))
@@ -106,6 +140,35 @@ class TestClasificacion(unittest.TestCase):
         r = niv[-1].campos[0].senales
         self.assertEqual([(s.tag_hmi, s.desc_hmi) for s in r],
                          [("N/A", "RESERVA 33KV Campo 04"), ("N/A", "RESERVA 132KV Campo 04")])
+
+
+class TestOtrosPlanos(unittest.TestCase):
+    """Reglas aprendidas de los otros planos de ingeniería (carpeta ape): hojas de cableado, módulos analógicos."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.perfil = perfiles.cargar_perfil("EPEN")
+        cls.cfg = pdf_plano.cargar_config(cls.perfil)
+
+    def test_rotulos_de_cable_no_son_senales(self):
+        no = ["-X1.6", "H23/4A", "H17/2B", "-P1.1", "E13", "110 Vcc (+)", "FASE R", "1,5mm2/Ne", "2.5 mm2", "-AL1"]
+        si = ["Reserva", "RESERVA", "Positivo 110 Vcc", "Negativo 48 VCC", "Interruptor 25204 Cerrado",
+              "ALARMA PRESION SF6", "Arrollamiento 132 KV 0-150º C", "Falta tensión auxiliar"]
+        for t in no:
+            self.assertFalse(pdf_plano._es_rotulo(t, self.cfg), t)
+        for t in si:
+            self.assertTrue(pdf_plano._es_rotulo(t, self.cfg), t)
+
+    def test_modulo_analogico_son_mediciones_y_sus_reservas_no_se_cuentan(self):
+        r = pdf_plano._senales_de_banda(["Arrollamiento 132 KV 0-150º C"] + ["Reserva"] * 15, self.cfg, 55)
+        self.assertEqual([(s.funcion, s.texto) for s in r], [(Funcion.MEDICION, "Arrollamiento 132 KV 0-150º C")])
+        # con Positivo/Negativo es un módulo digital: ahí las reservas sí son señales
+        r = pdf_plano._senales_de_banda(["Negativo 48 VCC", "Reserva", "Falla X 0-1"], self.cfg, 1)
+        self.assertEqual([s.funcion for s in r], [Funcion.RESERVA, Funcion.ALARMAS])
+
+    def test_abrir_cerrar_es_un_comando_de_doble_bit(self):
+        r = pdf_plano._senales_de_banda(["Interruptor QA Cerrar", "Interruptor QA Abrir"], self.cfg, 1)
+        self.assertEqual([(s.funcion, s.texto) for s in r], [(Funcion.COMANDO, "Interruptor QA Abrir/Cerrar")])
 
 
 @unittest.skipUnless(pymupdf and PLANO.exists(), "falta pymupdf o el plano de ejemplo")
@@ -121,8 +184,10 @@ class TestPlanoReal(unittest.TestCase):
         self.assertIn("Interruptor 25204 Apertura/Cierre", textos)
         self.assertFalse(any("Positivo" in t or "Negativo" in t for t in textos))
         self.assertEqual(sum(s.funcion == Funcion.COMANDO for s in pg.senales), 3)
+        self.assertTrue(pg.mediciones)  # la página nombra a un multimedidor ("Falla Multimedidor")
 
         niv = pdf_plano.a_niveles(paginas, perfil)
+        self.assertEqual(sum(s.funcion == Funcion.MEDICION for s in niv[0].campos[0].senales), 13)
         p = Proyecto(perfil_id="EPEN", niveles=niv, item_inicial=1)
         try:
             from openpyxl import load_workbook
@@ -141,6 +206,78 @@ class TestPlanoReal(unittest.TestCase):
             self.assertEqual(ws.max_column, 7)  # solo A-G
             self.assertEqual(ws.auto_filter.ref, f"A5:G{5 + n}")
             self.assertEqual(ws.print_area, f"'EPEN'!$A$1:$G${5 + n}")
+
+
+APE = Path(r"\\192.168.15.120\PasantiasMM\ape")
+TC6302 = APE / "TC3-04 TRAFO TR02" / "ETAP-0325-ET-CT-PL-EF-6302_1_CAF.pdf"
+TP6311 = APE / "TP3-06 TRAFO TR03 (Puerta vidrio)" / "como esta cableado" / "ETAP-0325-ET-CT-PL-EF-6311_B.pdf"
+PARA_CAO = APE / "TC3-04 TRAFO TR02" / "ETAP-0325-ET-CT-PL-EF-6302 para CAO.pdf"
+
+
+@unittest.skipUnless(pymupdf and TC6302.exists(), "falta pymupdf o la carpeta ape")
+class TestPlanosDeLaCarpetaApe(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.perfil = perfiles.cargar_perfil("EPEN")
+
+    def test_tablero_de_control_con_modulo_analogico_y_cajetin(self):
+        pg = {p.pagina: p for p in pdf_plano.leer_plano(TC6302, self.perfil, solo_paginas={53, 54, 55})}
+        self.assertEqual(sorted(pg), [53, 54, 55])
+        for p in pg.values():  # el nivel y el campo salen del cajetín (también en las hojas sin "Campo NN" en los rótulos)
+            self.assertEqual((p.nivel, p.campo), ("132KV", "04"))
+        self.assertEqual(pg[55].descripcion, "TRANSF TR02 132Kv")
+        self.assertEqual([(s.funcion, s.texto) for s in pg[55].senales],
+                         [(Funcion.MEDICION, "Arrollamiento 132 KV 0-150º C")])
+        self.assertTrue(any(s.texto.startswith("Prot. principal trafo") for s in pg[54].senales))
+
+    def test_hojas_de_cableado_de_un_tablero_de_proteccion_no_dan_senales(self):
+        # entradas binarias, alimentación, disparos…: son cableado del relé, no señales hacia el control
+        self.assertEqual(pdf_plano.leer_plano(TP6311, self.perfil, solo_paginas={24, 27, 2, 6, 12, 33, 35}), [])
+
+    def test_tiras_de_senalizacion_del_rele_al_control(self):
+        pg = {p.pagina: p for p in pdf_plano.leer_plano(TP6311, self.perfil, solo_paginas={29, 30, 31})}
+        self.assertEqual(sorted(pg), [29, 30, 31])
+        for p in pg.values():
+            self.assertEqual((p.origen, p.nivel, p.campo), ("rele", "132KV", "06"))  # TP3 06 -> 132KV, campo 06
+        self.assertEqual([s.texto for s in pg[29].senales],
+                         ["FALTA ALIMENTAC. PROT. PRINCIPAL", "FALTA ALIMENTAC. PROT. RESPALDO",
+                          "FALTA ALIMENTAC. PROT. R.NEUTRO", "BAJA PRESIÓN BLOQUEO SF6",
+                          "FALLA CARGA RESORTE", "BLOQUEO AL CIERRE"])  # 'ALARMAS' es una cabecera, no una señal
+        textos31 = [s.texto for s in pg[31].senales]
+        self.assertIn("PROTECCION PRINCIPAL DISPARO GENERAL", textos31)  # la cabecera del grupo se antepone
+        self.assertIn("REACTOR DE NEUTRO BUCHHOLZ", textos31)
+        self.assertTrue(all(s.de_rele and s.funcion == Funcion.ALARMAS for p in pg.values() for s in p.senales))
+
+    def test_las_senales_del_rele_llevan_el_rele_del_campo_con_descripcion_completa(self):
+        pg = pdf_plano.leer_plano(TP6311, self.perfil, solo_paginas={29})
+        niv = pdf_plano.a_niveles(pg, self.perfil, {29: ("132KV", "06", "", "SEL-2241-132kV", "AP", "SCHNEIDER P543_C06")})
+        filas = niv[0].campos[0].senales
+        self.assertEqual({s.controlador for s in filas}, {"SCHNEIDER P543_C06"})
+        self.assertEqual(filas[0].desc_hmi, "306AP FALTA Alimentacion PROT. PRINCIPAL".replace("PROT.", "Proteccion"))
+        # sin relé cargado se usa el controlador del campo
+        sin = pdf_plano.a_niveles(pg, self.perfil, {29: ("132KV", "06", "", "SEL-2241-132kV", "AP", "")})
+        self.assertEqual({s.controlador for s in sin[0].campos[0].senales}, {"SEL-2241-132kV"})
+
+    def test_la_impresion_de_un_listado_de_senales_no_es_un_esquema(self):
+        listado = APE / "En ejecucion" / "ETAP-0325-ET-CT-MC-LI-6209_ LISTADO DE SEÑALES.pdf"
+        if not listado.exists():
+            self.skipTest("falta el listado en PDF")
+        with self.assertRaises(pdf_plano.PdfNoEsquema):
+            pdf_plano.leer_plano(listado, self.perfil)
+
+    def test_los_pdf_en_ejecucion_se_leen(self):
+        for nombre, campo in (("ETAP-0325-ET-CT-PL-EF-6402_D.pdf", "04"), ("ETAP-0325-ET-CT-PL-EF-6303_C.pdf", "06")):
+            ruta = APE / "En ejecucion" / nombre
+            if not ruta.exists():
+                self.skipTest(f"falta {nombre}")
+            pg = pdf_plano.leer_plano(ruta, self.perfil)
+            self.assertTrue(pg and any(s.funcion == Funcion.ALARMAS for s in pg[0].senales), nombre)
+            self.assertEqual(pg[0].campo, campo)
+
+    @unittest.skipUnless(PARA_CAO.exists(), "falta el PDF 'para CAO'")
+    def test_pdf_sin_texto_avisa_en_vez_de_devolver_vacio(self):
+        with self.assertRaises(pdf_plano.PdfSinTexto):
+            pdf_plano.leer_plano(PARA_CAO, self.perfil)
 
 
 if __name__ == "__main__":

@@ -1,66 +1,39 @@
 # PREGUNTAS PENDIENTES PARA EL USUARIO
 
-Formato: `[ ] pregunta` → al responder, `[x] pregunta — respuesta`.
+Formato: `[ ] pregunta` → al responder, `[x] pregunta — respuesta`. Las respondidas se borran en la próxima limpieza (quedan en git).
 
-## Semana 1
-- [ ] ¿Qué suele cambiar de un cliente a otro (columnas, tags, largos, estados, carátula)?
-Suele cambiar 
-- [ ] Número de documento: ¿cómo se compone cada parte? (ej. ETAP-0722-ET-CT-MC-LI-6209)
+## Carátula (PC-A, 2026-10-29)
+- [ ] Número de documento (ej. ETAP-0722-ET-CT-MC-LI-6209): hoy se escribe completo (hasta 20 caracteres, sin guiones). ¿Cómo se compone cada parte, para armarlo con campos separados?
+- [ ] Fechas: ¿formato dd/mm/aaaa tanto en cada revisión como en el pie? ¿La fecha del pie es la de la última revisión?
+- [ ] ¿La escala es siempre "N/A"? ¿"Nro. Expediente" suele ir vacío?
+- [ ] La carátula admite 14 referencias y 4 revisiones (lo que tiene la plantilla del ETAP). Si hay más, ¿se agranda la plantilla o se hace otra hoja?
+- [x] ¿La carátula va en la misma app que la tabla? — el usuario pidió integrarla: ahora es la pestaña «Carátula» de la app (2026-10-29).
 
-- [ ] Fórmula exacta del TAG SCADA (páginas 15 y 20 del PDF no se leyeron completas).
-
-- [ ] Formato de TAG HMI y DESC. HMI.
-- [ ] ¿Cómo se nombran campos y niveles nuevos?
-- [ ] ¿Hay un ejemplo de datos de entrada para probar?
-- [ ] ¿Autorizan instalar git (y openpyxl / lector de PDF) en las PCs?
-preguntar
-- [ ] ¿Cuál cuenta/PC es PC-A y cuál PC-B?
-La PC-A es el usuario AD.GO\Pasante2 y la PC-B es el AD.GO\Pasante3. (La contraseña se quitó de este archivo para que no llegue a GitHub; la tiene el usuario.)
-- [x] (PC-B) ¿Las filas de doble bit (señalización con 2 filas, p. ej. "Abierto" y "Cerrado") se modelan como 2 `Senal` (la 2ª sin tag/desc. scada) o como 1 con ambas? El ejemplo las escribe en 2 filas con el mismo tag/offset consecutivo.
-- [x] (PC-B) Los comandos sin ITEM en el ejemplo: el escritor numera todas las filas; ver duda de PC-A sobre ITEM de comandos.
-
-## Dudas del generador (PC-A, tarea 2.1) — verificadas contra el ejemplo ETAP
-- [ ] TAG HMI: solo ~58 % se puede derivar de la descripción. El resto son nombres de punto del relé (ej. `ARRANQUE_PROT_PPAL_FASE_R`, `ENVIO_SENAL_TELEPROT`). ¿Vienen de una lista del fabricante/equipo (SEL-2241, P543, P142…) que podamos cargar como catálogo, o se escriben a mano en cada proyecto?
-- [ ] DESC. SCADA (máx. 20): el generador solo la propone si la descripción entera entra; si no, la deja vacía y avisa. ¿Hay una lista de abreviaturas para acortar (Seccionador→SEC, Interruptor→INT, Falta Tensión Auxiliar→F/Uaux…) que podamos cargar?
-- [ ] Doble bit: el ejemplo ocupa 2 filas (la 2ª sin tag ni descripciones, con "Cerrado"/"Remoto"). Una excepción: "Recierre" (SIN/CON) está en 1 sola fila. ¿Es un error del ejemplo o hay una regla?
-- [ ] Offsets del ejemplo: tienen saltos (263-266, luego 271-282). ¿Son señales eliminadas que no se renumeraron? ¿El software debe numerar siempre sin huecos?
-- [ ] Servicios auxiliares (SACA/SACC): en el ejemplo el rango RAW está invertido respecto del resto (tensión −32768…32767, corriente 0…32767). ¿Cambia por campo?
-- [ ] Enlace señalización↔comando: el generador usa `Senal.par` (mismo texto en ambas). ¿Se puede deducir del plano (mismo equipo, ej. "Seccionador 329SA03")?
-- [x] Reservas: el generador las trata como cualquier campo (tag/TAG HMI "N/A", DESC "RESERVA", ocupan un offset DI) y respeta el bloque único "RESERVAS" al final de la hoja que definió el usuario el 2026-10-28.
-
-## Carga de PDF de plano (PC-B, tarea 3.3)
-- [ ] En el plano 6402, las páginas 29/51/73 tienen columnas de bornes con rótulos verticales (ej. "Seccionador 229SL04 Remoto", "Falta Tensión Auxiliar SSAA", "Reserva") y tensiones (48 VCC, 110 Vcc). ¿Cada columna con rótulo = una señal de la lista? ¿Se ignoran "Negativo"/"Positivo" (alimentación)?
-- [x] ¿Dónde figura en el plano el rótulo del módulo (DI9, etc.) para PLACA y ENTRADA? No aparece en el texto de la pág. 29.
-- [ ] ¿Cómo se decide si una señal es ALARMA, SEÑALIZACION, COMANDO o MEDICION? (por palabras del rótulo: "Falta"/"Falla" = alarma, "Abierto/Cerrado" = señalización doble bit, "Apertura/Cierre" = comando...)
-- [x] (PC-B) Cada columna rotulada del plano es una señal; Positivo/Negativo (alimentación) se ignoran — respuesta del usuario 2026-10-27.
-- [x] (PC-B) Con el plano 6402 se obtiene "Interruptor 25204 en Remoto/Local" y "Campo 04 33KV Llave Tele/Distancia en D/en T": ¿los textos de OBSERVACIONES se corrigen a mano o hay una regla de redacción?
-- [x] (PC-B) Las reservas del plano se ubican al final de cada campo. ¿Van ahí o dentro de su función (como en el ejemplo ETAP)?
-- [x] (PC-B) Reservas: van todas juntas en un único bloque al final de TODA la hoja (Nivel "RESERVAS"); la descripción aclara el campo (y el nivel si hay varios) — respuesta del usuario 2026-10-28 (corrigió su primera respuesta).
-
-## Cargar datos desde el Excel (PC-B, 2026-10-28)
-- [~] El usuario dice que las descripciones y nombres ya están en un Excel (respondió: se usa como DICCIONARIO). ¿Cuál? ¿El listado viejo de la obra (como el ETAP), u otra planilla con los nombres de equipos y sus abreviaturas?
-- [x] ¿Cómo se usa ese Excel: (a) como diccionario para reutilizar DESC. HMI / DESC. SCADA de filas parecidas (ej. "Falta Tensión Auxiliar" → "F/Uaux"), o (b) como proyecto base que se abre y se modifica con las señales nuevas del PDF?
-- [ ] DESC. SCADA (máx. 20): el plano da textos largos ("Secc. 229SL04 Falta Tensión Auxiliar SSAA"). ¿La abreviatura sale de la tabla de lineamientos (INT, SBA, ST, F/U AUX…) más lo que aprenda del Excel, y lo que no entre queda para completar a mano?
-
-## PLACA / ENTRADA y validador (PC-A, tarea 3.1)
-- [ ] Módulos: el software pide por cada placa (ej. A3.4): tipo DI o DO, cantidad de entradas y primera entrada, y las asigna en orden. En el ejemplo ETAP el orden físico no siempre es correlativo (2,1 / 3,4 / 9,8 / 18,17). ¿Hay una regla (p. ej. por borne del plano) o se corrige a mano?
-- [ ] ¿Cuántas entradas/salidas tiene cada tipo de módulo (en el ejemplo hay placas A1.4, A2.5, A3.4…)? ¿Es siempre 24 (DI) y 10 (DO) o depende del módulo?
-- [ ] Un comando de 1 bit (CONECT/DESCONEC): ¿ocupa 1 salida ("5") o también un par ("5/6")?
-- [ ] El ejemplo ETAP tiene inconsistencias que el validador marca: una alarma y una reserva con el mismo OFFSET 284 y la misma entrada A3.5.15; DESC. SCADA repetidas (303LC DISP GRL PPAL); estados MARCHA/PARADA en vez de PAR/ARR del PDF; 3 filas sin OFFSET; 2 mediciones con tipo N/A. ¿Son errores a corregir o excepciones válidas?
-- [ ] Mediciones sin PLACA/ENTRADA (N/A) como en el ejemplo: ¿correcto, o las AI también ocupan una entrada de un módulo analógico?
-- [ ] (PC-B) Los lineamientos dan SBA/SBB/ST para seccionadores, pero el plano usa SA/SB/SL/ST. ¿SL (seccionador de línea) cómo se abrevia? Mientras tanto la app lo pregunta.
-- [ ] (PC-B) Señales sin equipo (ej. «Campo 04 33KV QF4 ACTUADA», «2TV04- Falta Vca Prot»): ¿hay una regla general (QF/QM/QC = interruptor/seccionador…) o se definen una por una?
-
-## Etapa "columnas fuera de SCADA" (PC-B, 2026-10-28)
-- [x] Columnas en alcance: A-G y P, S, T, W (PROTOCOLO, POS DNP, BORNERA, N° DE BORNE vacías). Origen de datos: PDF de plano y carga a mano. SCADA oculto de la app.
-- [x] Doble bit: 2 filas con ITEM propio. Controlador: SEL-2241 + tensión del nivel. ENTRADA (DI) = borne impreso. PLACA: la escribe el usuario por módulo. TAG HMI armado y editable; DESC. HMI = prefijo + texto sin tildes.
-- [x] (respuestas resumidas arriba; "doble bit", "comandos sin ITEM", "módulo", "OBSERVACIONES" y "reservas" quedaron resueltas con estas decisiones)
-- [ ] Salidas (comandos/DO): por ahora sin PLACA/ENTRADA. Cuando se retomen: ¿el par es el N.º de relé de salida (borne/2, ej. 9/10) o los bornes impresos?
-- [ ] Mediciones (AI): ¿se leen de otro plano/página? El plano 6402 no las trae en las páginas de bornes.
-- [ ] Controladores de relés de protección (SCHNEIDER P543…) y comunicaciones (RTAC, TAPCON, EXEMYS del Excel de materiales): ¿se cargan a mano fila por fila o hay una lista por tablero?
-
-## Tabla A-G: tags, descripciones y controladores (PC-B, 2026-10-28)
-- [x] Controlador de protecciones cableadas = relé del campo; multimedidor y alimentación = SEL-2241 + tensión; TAG = descripción abreviada (ej. Seccionador_229SL04_F_Tension_Aux_...).
-- [ ] ¿Qué otras abreviaturas del plano se expanden en la DESC. HMI? Hoy: Secc., Prot., Ten., Conj., Cmdo, F Motriz. Candidatas: SSAA (Servicios Auxiliares), Vca/VCC, QF4/QM4/QC4 ACTUADA, TI/TV, "en D"/"en T", Med.
-- [ ] En el TAG, "Fuerza" se abrevia Fza (vocabulario del ETAP): "Seccionador_229SL04_F_Tension_Aux_Fza_Motriz". ¿O preferís F_Motriz?
+## Tabla A-G (PC-B)
+- [ ] Salidas (comandos/DO): por ahora sin PLACA/ENTRADA. Si se retoman: ¿el par es el N.º de relé de salida (borne/2, ej. 9/10) o los bornes impresos?
+- [ ] ¿Qué otras abreviaturas del plano se expanden en la DESC. HMI? Hoy: Secc., Prot., Ten., Conj., Cmdo, F Motriz. Candidatas: SSAA, Vca/VCC, QF4/QM4/QC4 ACTUADA, TI/TV, "en D"/"en T", Med.
+- [ ] En el TAG, "Fuerza" se abrevia Fza (vocabulario del ETAP). ¿O preferís F_Motriz?
 - [ ] ¿Hay un largo máximo para TAG y DESC. HMI?
+- [ ] Controladores de relés de protección (SCHNEIDER P543…) y comunicaciones (RTAC, TAPCON, EXEMYS): ¿se cargan a mano o hay una lista por tablero?
+- [ ] Los lineamientos dan SBA/SBB/ST para seccionadores, pero el plano usa SA/SB/SL/ST. ¿SL cómo se abrevia? Señales sin equipo (QF4 ACTUADA, 2TV04 Falta Vca Prot): ¿hay una regla general?
+- [ ] Mediciones: el rótulo "Multimedidor ION" está dibujado (no es texto); hoy se infiere que el campo mide por la alarma "Falla Multimedidor". ¿Está bien, o hay otro dato en el plano?
+
+## SCADA H-O (PC-A, 2026-10-29) — lo que el motor ya hace y lo que hay que confirmar
+Respondido por los datos de los ejemplos (verificado contra el ETAP; ver `prueba_scada\LEEME.md`): la variable arranca en 10 salvo el campo 303 (00); entre campos quedan 10 offsets DI y 8 AI libres; el comando comparte tag y offset con su señalización; las mediciones se numeran 01-14 saltando la 04 (132 kV) o la 12 (6,6 kV).
+- [ ] **Variable inicial:** el ETAP arranca en 00 solo en el campo de la línea (303) y en 10 en todos los demás. ¿Es una regla (línea = 00, resto = 10) o un caso puntual?
+- [ ] **Separación de offsets entre campos:** 10 en entradas digitales y 8 en analógicas (observado en el ETAP). ¿Es una regla del cliente o quedó así por las señales borradas?
+- [ ] **Seccionadores:** el PDF dice SBA/SBB/ST pero el ETAP escribe "SEC BA / SEC L / SEC T". El motor usa el estilo del ETAP. ¿Cuál va?
+- [ ] **Estados que el ETAP escribe distinto del PDF:** MARCHA/PARADA (PDF: PAR/ARR), CONSIGNA1-3 (PDF: NORMAL/OPERO), TELE/DISTANCIA en 6,6 kV (PDF: DIST/TELE). El motor sigue el PDF. ¿Está bien?
+- [ ] **FALLA o ACTUO:** el ETAP usa FALLA en "UTR COMUNICACION…" y en "Prot. TR1 6,6kV - Falla Interna", pero ACTUO en "Prot. Ppal… Falla Interna" (303). El motor usa FALLA solo para las "UTR COMUNICACION" y avisa en los demás. ¿Cuál es el criterio?
+- [ ] **MIN/MAX EU de las mediciones:** hoy se calculan como RAW×0,1 (RAW×0,01 en frecuencia y ángulo) porque así están en el ETAP, pero son los valores de ingeniería del aparato (relación de TI/TV). ¿Los cargamos por campo?
+- [ ] **Abreviaturas (DESC. SCADA de 20 caracteres):** el glosario aprendido del ETAP resuelve solo el 42 % de un campo nuevo (acierta 82 % de lo que resuelve); el resto sale como PROPUESTA marcada para confirmar (siempre ≤ 20). El ETAP tiene varias abreviaturas para lo mismo (CMDO/CMNDO, F/FZA MOT/F/U FM, MK01/MK02, estilo pegado "303LcPrtTxTelepPpal"). ¿Cuál es la correcta, y hay una lista oficial de abreviaturas?
+- [ ] **Qué cambia de un cliente a otro** (respondida por los datos, falta que la confirmes): USRE usa ERR_0 en mayúsculas, offset propio en los comandos, MIN RAW −32767, variable inicial 2/7/8 y no tiene DESC. HMI ni UTR. ¿Hay más diferencias que no se vean en los listados?
+- [ ] MAX RAW: 32767 (ejemplo) o 32768 (PDF); rangos de SACA/SACC; significado de AFP, VP, IP, LF, IF, CBC; mediciones sin placa/entrada.
+- [ ] Orden físico de las entradas (en el ETAP no siempre es correlativo) y cantidad de entradas por módulo.
+- [ ] Inconsistencias del ETAP que el validador marcó: OFFSET 284 y entrada A3.5.15 repetidos, estados MARCHA/PARADA en vez de PAR/ARR, filas sin OFFSET. ¿Errores o excepciones válidas?
+## Otros planos de ingeniería (carpeta ape) — PC-B, 2026-10-29
+- [ ] Tableros de PROTECCIÓN (TP3-xx): sus hojas son cableado de relés (entradas binarias, disparos, "SEÑALIZACION A SISTEMA DE CONTROL - CAMPO 06"). Hoy no generan filas (correcto para las E/S del RTAC). ¿Querés que las señales del relé hacia el control entren al listado con el controlador del relé (SCHNEIDER P543_C306…)?
+- [ ] Módulos analógicos (AI): cada rótulo con rango pasa a MEDICION y las "Reserva" no se cuentan. ¿Está bien, o cada entrada libre debe quedar como reserva analógica?
+- [ ] Servicios auxiliares (TSACA / TSACPT): las hojas traen señales como "Falta tensión Int Ppal 110VCC" e "Interruptor QA Abrir/Cerrar". En el ETAP esos campos se llaman SACC/SACA, con nivel SSAA y controlador SEL-2241_SSAA. ¿Qué tablero corresponde a cuál (TSACPT = continua → SACC, TSACA = alterna → SACA)?
+- [ ] Los PDF "para CAO" no tienen texto (son imágenes). ¿Siempre existe la versión "_CAF"/"_B" con texto para usar en su lugar?
+- [ ] (PC-B) 19 de los 103 PDF vigentes de `ape` son imágenes (versiones "para CAO", "Correciones", hojas de SMEC/CAMMESA). ¿Es con esos con los que probaste? Para leerlos haría falta instalar un OCR (paquete pip de ~60 MB, puede fallar con la letra de los planos).

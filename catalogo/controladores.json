@@ -1,0 +1,362 @@
+{
+  "_nota": "Catálogo de controladores / dispositivos de campo para el listado. Armado el 2026-10-29 con: hoja de datos SEL-2240 y página de producto de SEL; hoja de datos y manual de módulos (Rev 3.2) de Saitel DP. La página de Schneider no lista los módulos en su texto, así que Saitel DP puede estar desactualizado: verificá contra el sitio del fabricante. Los modelos propios se guardan aparte (controladores_propios.json).",
+  "consultado": "2026-10-29",
+  "sitios": {
+    "SEL (Schweitzer Engineering Laboratories)": "https://selinc.com/products/2240/",
+    "Schneider Electric": "https://www.se.com/co/es/product-range/61747-saitel-dp/#overview"
+  },
+  "entradas": [
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Plataforma",
+      "modelo": "SEL-2240",
+      "descripcion": "Plataforma modular Axion: lógica RTAC + módulos de E/S, monitoreo y control sobre backplane EtherCAT.",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-2241",
+      "descripcion": "Módulo RTAC del sistema Axion (EtherCAT a los módulos de E/S). 2 puertos Ethernet: 10/100BASE-T, opción fibra 100BASE-FX o 100BASE-LX.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-2241-2",
+      "descripcion": "Sucesor del SEL-2241 (más de 5 veces la capacidad de procesamiento). 3 puertos Ethernet: 2 RJ45 10/100/1000 y 2 SFP 100/1000.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "RTAC",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-3350",
+      "descripcion": "Plataforma RTAC; soporta EtherCAT a módulos Axion y OPC UA.",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "RTAC",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-3530-4",
+      "descripcion": "Plataforma RTAC; soporta EtherCAT a módulos Axion.",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "RTAC",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-3555",
+      "descripcion": "Plataforma RTAC; soporta OPC UA y EtherCAT con la tarjeta SEL-3390E4.",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "RTAC",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-3560S",
+      "descripcion": "Plataforma RTAC; soporta OPC UA.",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "RTAC",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-3560E",
+      "descripcion": "Plataforma RTAC; soporta OPC UA y, con la tarjeta SEL-3390E4, EtherCAT.",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "RTAC",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-3505",
+      "descripcion": "Plataforma RTAC (sin servicios de archivos MMS Client).",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "RTAC",
+      "categoria": "Controlador (RTAC)",
+      "modelo": "SEL-3505-3",
+      "descripcion": "Plataforma RTAC (sin servicios de archivos MMS Client).",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "RTAC",
+      "categoria": "Accesorio",
+      "modelo": "SEL-3390E4",
+      "descripcion": "Tarjeta de expansión necesaria para EtherCAT en SEL-3555 y SEL-3560E.",
+      "fuente": "https://selinc.com/products/2240/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Chasis / alimentación",
+      "modelo": "SEL-2242",
+      "descripcion": "Chasis/backplane del Axion: 10 ranuras, 4 ranuras o 2 × 4 ranuras. Opción de panel frontal (bay controller con pantalla táctil de 7\") solo en 10 ranuras.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Chasis / alimentación",
+      "modelo": "SEL-2243",
+      "descripcion": "Acoplador de alimentación (power coupler); admite redundancia y conexión a nodos remotos.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Entradas digitales",
+      "modelo": "SEL-2244-2",
+      "descripcion": "Módulo de 24 entradas digitales; 24, 48, 110, 125, 220 o 250 Vac/Vdc.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Entradas digitales",
+      "modelo": "SEL-2244-4",
+      "descripcion": "Módulo de 32 entradas digitales; 24, 48, 110 o 125 V.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Salidas digitales",
+      "modelo": "SEL-2244-3",
+      "descripcion": "Módulo de 16 salidas de control de corriente estándar (16 Form A, 8 A + 8 B o 16 Form B).",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Salidas digitales",
+      "modelo": "SEL-2244-5",
+      "descripcion": "Módulo de 10 salidas rápidas de alta corriente (10 Form A, 5 A + 5 B o 10 Form B).",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Entradas analógicas",
+      "modelo": "SEL-2245-2",
+      "descripcion": "Entradas analógicas CC (±20 mA, ±2 mA, ±10 V).",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Entradas analógicas",
+      "modelo": "SEL-2245-22",
+      "descripcion": "Entradas analógicas CC de rango extendido (5–400 V).",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Entradas analógicas",
+      "modelo": "SEL-2245-221",
+      "descripcion": "Monitoreo de baja tensión (LEA), 0,05–22 V.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Salidas analógicas",
+      "modelo": "SEL-2245-3",
+      "descripcion": "Salidas analógicas CC (±20 mA, ±10 V).",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Medición / protección CA",
+      "modelo": "SEL-2245-4",
+      "descripcion": "Módulo de medición CA: 0,05–22 A y 5–400 V.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Medición / protección CA",
+      "modelo": "SEL-2245-42",
+      "descripcion": "Módulo de protección CA: 0,1–20 A y 6,7–300 V.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Medición / protección CA",
+      "modelo": "SEL-2245-411",
+      "descripcion": "Corriente estándar (0,05–22 A) y monitoreo de baja tensión LEA (0,05–22 V).",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Medición / protección CA",
+      "modelo": "SEL-2245-431",
+      "descripcion": "Baja tensión LEA y tensión estándar: 0,033–10 V y 6,7–300 V.",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Medición / protección CA",
+      "modelo": "SEL-2245-432",
+      "descripcion": "Entradas analógicas de baja tensión (LEA).",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "SEL (Schweitzer Engineering Laboratories)",
+      "familia": "SEL-2240 Axion",
+      "categoria": "Medición / protección CA",
+      "modelo": "SEL-2245-43",
+      "descripcion": "Módulo para TC de núcleo partido (aplicación registrador digital de fallas).",
+      "fuente": "https://selinc.com/api/download/10595/"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Plataforma",
+      "modelo": "Saitel DP",
+      "descripcion": "Plataforma de control y automatización en tiempo real (RTU, convertidor de bahía, convertidor de protocolos); IEC 61850.",
+      "fuente": "https://www.se.com/co/es/product-range/61747-saitel-dp/"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Controlador (CPU)",
+      "modelo": "SM_CPU866",
+      "descripcion": "Unidad de control estándar (VxWorks), puertos Ethernet.",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Controlador (CPU)",
+      "modelo": "SM_CPU866FX",
+      "descripcion": "Unidad de control estándar con 2 puertos de fibra óptica (figura como producto legado en el manual Rev 3.2).",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Controlador (CPU)",
+      "modelo": "SM_CPU866e",
+      "descripcion": "Unidad de control de alto rendimiento (doble núcleo, 800 MHz); ciberseguridad.",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Comunicaciones",
+      "modelo": "SM_SER",
+      "descripcion": "Módulo de comunicaciones serie (RS-232, RS-485, RS-422).",
+      "fuente": "https://pdfcoffee.com/modulos-saitel-dp-sp-rev32-pdf-free.html"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Comunicaciones",
+      "modelo": "SM_SERS",
+      "descripcion": "Módulo de comunicaciones serie (variante síncrona).",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Entradas digitales",
+      "modelo": "SM_DI32",
+      "descripcion": "32 entradas digitales.",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Salidas digitales",
+      "modelo": "SM_DO32T",
+      "descripcion": "32 salidas digitales a transistor.",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Salidas digitales",
+      "modelo": "SM_DO16R",
+      "descripcion": "16 salidas digitales a relé.",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Entradas analógicas",
+      "modelo": "SM_AI16",
+      "descripcion": "16 entradas analógicas.",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Entradas / salidas analógicas",
+      "modelo": "SM_AI8AO4",
+      "descripcion": "8 entradas y 4 salidas analógicas (salidas en tensión o corriente por puente).",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Chasis / alimentación",
+      "modelo": "SM_PS",
+      "descripcion": "Fuente de alimentación estándar.",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Chasis / alimentación",
+      "modelo": "SM_PS40",
+      "descripcion": "Fuente de alimentación de alto rendimiento.",
+      "fuente": "https://trimitraelektrik.com/wp-content/uploads/2021/11/Cutsheet-Saitel-DP-EN-Rev3.0.pdf"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Chasis / alimentación",
+      "modelo": "SM_BPX",
+      "descripcion": "Backplane para montaje en panel del tablero (variantes SM_BPX4 y SM_BPX9).",
+      "fuente": "https://pdfcoffee.com/modulos-saitel-dp-sp-rev32-pdf-free.html"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Chasis / alimentación",
+      "modelo": "SM_CHX",
+      "descripcion": "Soporte tipo chasis para los módulos (variante SM_CHX4).",
+      "fuente": "https://pdfcoffee.com/modulos-saitel-dp-sp-rev32-pdf-free.html"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Otros",
+      "modelo": "MSAC",
+      "descripcion": "Módulo de conmutación usado en la redundancia de CPU.",
+      "fuente": "https://pdfcoffee.com/modulos-saitel-dp-sp-rev32-pdf-free.html"
+    },
+    {
+      "marca": "Schneider Electric",
+      "familia": "Saitel DP",
+      "categoria": "Otros",
+      "modelo": "BP2F",
+      "descripcion": "Expansión de backplane por fibra óptica.",
+      "fuente": "https://pdfcoffee.com/modulos-saitel-dp-sp-rev32-pdf-free.html"
+    }
+  ]
+}

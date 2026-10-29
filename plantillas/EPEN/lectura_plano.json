@@ -9,7 +9,9 @@
   "x_minimo_rel": 0.125,
   "palabras_salida": [
     "Cierre",
-    "Apertura"
+    "Apertura",
+    "Abrir",
+    "Cerrar"
   ],
   "_pares": "Los sufijos van en el orden de los estados: la 1ª fila de la señal es el primero (Abierto, Local, Apertura…).",
   "pares_doble_bit": [
@@ -38,6 +40,13 @@
       "sufijos": [
         "Apertura",
         "Cierre"
+      ],
+      "tipo": "COMANDO"
+    },
+    {
+      "sufijos": [
+        "Abrir",
+        "Cerrar"
       ],
       "tipo": "COMANDO"
     }
@@ -78,7 +87,10 @@
     "Ten": "Tension",
     "Conj": "Conjunto",
     "Cmdo": "Comando",
-    "F Motriz": "Fuerza Motriz"
+    "F Motriz": "Fuerza Motriz",
+    "Alimentac": "Alimentacion",
+    "R.NEUTRO": "Reactor de Neutro",
+    "REACT": "Reactor"
   },
   "_abreviaturas_tag": "Palabra completa -> abreviatura en el TAG HMI (legible para una persona).",
   "abreviaturas_tag": {
@@ -90,5 +102,54 @@
     "Respaldo": "Resp",
     "Diferencial": "Dif",
     "Fuerza": "Fza"
+  },
+  "_mediciones": "Un campo mide si su página de bornes nombra a un multimedidor (patrón 'detectar'). Juego de mediciones tomado del listado ETAP (13 por campo); {campo} y {tension} se completan.",
+  "mediciones": {
+    "_": "Un campo mide si su página de bornes nombra a un multimedidor (patrón 'detectar'). Juego de mediciones tomado del listado ETAP (13 por campo); {campo} y {tension} se completan.",
+    "detectar": "Multimedidor",
+    "controlador": "ION 7400 / SCHNEIDER P142",
+    "juego": [
+      "TENSION CAMPO {campo} {tension} FASE R",
+      "TENSION CAMPO {campo} {tension} FASE S",
+      "TENSION CAMPO {campo} {tension} FASE T",
+      "CORRIENTE CAMPO {campo} {tension} FASE R",
+      "CORRIENTE CAMPO {campo} {tension} FASE S",
+      "CORRIENTE CAMPO {campo} {tension} FASE T",
+      "FRECUENCIA CAMPO {campo} {tension}",
+      "ANGULO DE FASE TOTAL CAMPO {campo} {tension}",
+      "POTENCIA ACTIVA CAMPO {campo} {tension}",
+      "POTENCIA APARENTE CAMPO {campo} {tension}",
+      "POTENCIA REACTIVA CAMPO {campo} {tension}",
+      "TENSION PROMEDIO CAMPO {campo} {tension}",
+      "CORRIENTE PROMEDIO CAMPO {campo} {tension}"
+    ]
+  },
+  "min_etiquetas_modulo": 8,
+  "_min_etiquetas_modulo": "Una franja de etiquetas alineadas es un módulo de E/S solo si tiene al menos esta cantidad; así no se confunden las tiras de cabecera ni los rótulos de cableado.",
+  "nivel_por_digito": {
+    "3": "132KV",
+    "2": "33KV",
+    "1": "6,6KV"
+  },
+  "_nivel_por_digito": "Dígito del tablero (TC3, TC2, TC1…) -> nivel, si el cajetín no dice la tensión. Mismo criterio de los tags: 3 = 132/66 kV, 2 = 33 kV, 1 = 13,2/6,6 kV.",
+  "rango_analogico": "\\d+\\s*[-–]\\s*\\d+",
+  "_rango_analogico": "Un módulo sin Positivo/Negativo cuyas etiquetas traen un rango (0-150º C) es de entradas analógicas.",
+  "tiras_rele": {
+    "_": "Hojas de los tableros de protección con una tira de celdas arriba (una señal del relé hacia el control por celda). Solo entran las hojas cuyo título coincide con estos patrones; las celdas 'RESERVA' no se cuentan (son salidas del relé, no del RTAC).",
+    "titulos": [
+      "SE.ALIZACI.N(ES)? (A|AL) SISTEMA DE CONTROL",
+      "SE.ALIZACI.N DIGITALES? DE PROT",
+      "SE.ALIZACI.N(ES)? (A|AL) (TABLERO )?TC\\d"
+    ],
+    "cabeceras_sin_prefijo": [
+      "ALARMAS",
+      "SEÑALIZACION",
+      "SEÑALIZACIÓN",
+      "SEÑALIZACIONES"
+    ],
+    "alto_tira": 135,
+    "tolerancia_celda": 18,
+    "alcance_cabecera": 150,
+    "salto_vertical": 22
   }
 }

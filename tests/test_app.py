@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -146,6 +146,116 @@ class TestVentana(unittest.TestCase):
         self.assertEqual(c.senales[0].controlador, "SCHNEIDER P142_C04")
         self.app._asignar(nivel, c, c.senales[0], "nivel", "6,6KV")
         self.assertEqual(c.controlador, "SEL-2241-6,6kV")
+
+    def test_agregar_mediciones_al_final_del_campo_sin_repetir(self):
+        from tkinter import messagebox
+        from modelo import Funcion
+        c = self._campo()
+        avisos = []
+        messagebox.showinfo = lambda *a, **k: avisos.append(a)
+        self.app.arbol.selection_set(list(self.app.arbol.get_children())[0])
+        self.app.agregar_mediciones()
+        med = [s for s in c.senales if s.funcion == Funcion.MEDICION]
+        self.assertEqual((len(med), c.senales[-1].funcion), (13, Funcion.MEDICION))
+        self.assertEqual((med[0].desc_hmi, med[0].controlador), ("204 TENSION CAMPO 04 33kV FASE R",
+                                                                 "ION 7400 / SCHNEIDER P142"))
+        self.app.arbol.selection_set(list(self.app.arbol.get_children())[0])
+        self.app.agregar_mediciones()  # ya las tiene: no se duplican
+        self.assertEqual(sum(s.funcion == Funcion.MEDICION for s in c.senales), 13)
+        self.assertEqual(len(avisos), 1)
+
+    def _con_dialogo_controlador(self, resultado):
+        """Reemplaza la ventana modal del controlador por una que responde `resultado`."""
+        from app import principal
+        recibido = {}
+
+        class Falso:
+            def __init__(self, master, actual, nivel, entradas):
+                recibido.update(actual=actual, nivel=nivel, modelos=len(entradas))
+                self.resultado = resultado
+
+        self.addCleanup(setattr, principal, "DialogoControlador", principal.DialogoControlador)  # no se filtra
+        principal.DialogoControlador = Falso
+        self.app.wait_window = lambda w: None
+        return recibido
+
+    def test_el_controlador_se_elige_del_catalogo_para_la_fila_o_el_campo(self):
+        c = self._campo()
+        ids = list(self.app.arbol.get_children())
+        recibido = self._con_dialogo_controlador(("SEL-2241-33kV", "fila"))
+        self.app._elegir_controlador(self.app.niveles[0], c, c.senales[1])
+        self.assertEqual([s.controlador for s in c.senales], ["SEL-2241-33kV", "SEL-2241-33kV", "", ""])
+        self.assertEqual((recibido["nivel"], recibido["modelos"] >= 40), ("33KV", True))
+        self._con_dialogo_controlador(("SM_CPU866e", "campo"))
+        self.app._elegir_controlador(self.app.niveles[0], c, c.senales[0])
+        self.assertEqual({s.controlador for s in c.senales}, {"SM_CPU866e"})
+        self._con_dialogo_controlador(None)  # cancelar no cambia nada
+        self.app._elegir_controlador(self.app.niveles[0], c, c.senales[0])
+        self.assertEqual({s.controlador for s in c.senales}, {"SM_CPU866e"})
+
+    def test_la_ventana_del_controlador_propone_la_tension_solo_para_controladores(self):
+        from app.principal import DialogoControlador
+        import catalogo
+        v = DialogoControlador(self.app, "", "33KV", catalogo.cargar()["entradas"])
+        try:
+            self.assertIn("SEL-2241", v.combo["values"])
+            self.assertIn("SM_DI32", v.combo["values"])
+            v.valor.set("SEL-2241")
+            v._elegido()
+            self.assertTrue(v.con_tension.get())  # controlador: sugiere SEL-2241-33kV
+            v.alcance.set("campo")
+            v._ok()
+            self.assertEqual(v.resultado, ("SEL-2241-33kV", "campo"))
+        finally:
+            v.destroy()
+        v = DialogoControlador(self.app, "", "33KV", catalogo.cargar()["entradas"])
+        try:
+            v.valor.set("SEL-2244-2")  # módulo de E/S: sin tensión
+            v._elegido()
+            self.assertFalse(v.con_tension.get())
+            v._ok()
+            self.assertEqual(v.resultado, ("SEL-2244-2", "fila"))
+        finally:
+            v.destroy()
+        v = DialogoControlador(self.app, "", "RESERVAS", [])  # nivel sin tensión: la casilla no aplica
+        try:
+            v.valor.set("ACME 9000")  # se puede escribir un modelo que no está en el catálogo
+            v._ok()
+            self.assertEqual(v.resultado, ("ACME 9000", "fila"))
+        finally:
+            v.destroy()
+
+    def test_usar_un_modelo_del_catalogo(self):
+        c = self._campo()
+        ids = list(self.app.arbol.get_children())
+        self.app.arbol.selection_set(ids[1])
+        self.assertEqual(self.app._aplicar_controlador("SEL-2241", True, "filas"), 1)  # con la tension del nivel
+        self.assertEqual([s.controlador for s in c.senales], ["SEL-2241-33kV", "SEL-2241-33kV", "", ""])
+        self.app.arbol.selection_set(list(self.app.arbol.get_children())[0])
+        self.assertEqual(self.app._aplicar_controlador("SM_CPU866e", False, "campo"), 4)  # todo el campo, sin tension
+        self.assertEqual({s.controlador for s in c.senales}, {"SM_CPU866e"})
+        self.assertEqual(self.app._aplicar_controlador("SEL-2241", True, "filas"), 1)  # se conserva la fila elegida
+        self.assertEqual(c.senales[0].controlador, "SEL-2241-33kV")
+        self.app.arbol.selection_remove(*self.app.arbol.selection())
+        self.assertEqual(self.app._aplicar_controlador("SEL-2241", True, "filas"), 0)  # sin seleccion: nada
+
+    def test_la_ventana_del_catalogo_lista_filtra_y_aplica(self):
+        from app.catalogo_ui import VentanaCatalogo
+        llamadas = []
+        v = VentanaCatalogo(self.app, lambda m, t, a: llamadas.append((m, t, a)) or 1)
+        try:
+            self.assertGreater(len(v.arbol.get_children()), 40)
+            v.texto.set("2244-3")
+            self.assertEqual([v.arbol.item(i, "values")[3] for i in v.arbol.get_children()], ["SEL-2244-3"])
+            v.arbol.selection_set(v.arbol.get_children()[0])
+            v.alcance.set("campo")
+            v._usar()
+            self.assertEqual(llamadas, [("SEL-2244-3", True, "campo")])
+            v.marca.set("Schneider Electric")
+            v.texto.set("")
+            self.assertTrue(all(v.arbol.item(i, "values")[0] == "Schneider Electric" for i in v.arbol.get_children()))
+        finally:
+            v.destroy()
 
     def test_doble_bit_se_mueve_y_se_borra_como_bloque(self):
         from tkinter import messagebox

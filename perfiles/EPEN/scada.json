@@ -1,0 +1,120 @@
+{
+  "id": "EPEN",
+  "fuentes": [
+    "Reglas/LISTADO DE SEÑALES-LINEAMIENTOS-Epen.pdf (págs. 1-3)",
+    "Ejemplos/ETAP-0722-ET-CT-MC-LI-6209-1-Lista señales - CAO.xlsx (listado terminado)",
+    "Ejemplos/USRE-0119-ET-CT-PN-SE-1700_C.xlsx (otro cliente: solo para contrastar)"
+  ],
+  "_convencion": "Lo marcado 'observado' sale del ETAP y no figura en el PDF; 'pendiente' = hay que confirmarlo con el usuario.",
+
+  "largo_desc_scada": 20,
+  "orden_funciones": ["ALARMAS", "SEÑALIZACION", "COMANDO", "MEDICION"],
+
+  "tag": {
+    "_": "{nivel}{campo}.{variable:02d}{bits}{C} | {nivel}{campo}.{variable:02d}{codigo_medicion}  (PDF pág. 2)",
+    "bits_validos": [1, 2],
+    "sufijo_comando": "C",
+    "digitos_variable": 2,
+    "campos_especiales": ["TP1", "TP2", "RN1", "RN2", "SAA", "SAC", "SACA", "SACC", "UTR"],
+    "_campos_especiales": "TPn/RNn/SAA/SAC salen del PDF; SACA, SACC y UTR del ETAP (observado). Los especiales no llevan dígito de nivel.",
+    "variable_inicial": 10,
+    "variable_inicial_por_campo": { "303": 0 },
+    "_variable_inicial": "observado: el campo de la línea (303) arranca en 00; todos los demás en 10. PENDIENTE: confirmar la regla.",
+    "variable_inicial_medicion": 1
+  },
+
+  "offsets": {
+    "_": "Un contador por tipo de punto; arranca donde diga el usuario (Proyecto.offsets_iniciales).",
+    "separacion_entre_campos": { "DI": 10, "AI": 8, "DO": 0, "AO": 0 },
+    "_separacion": "observado en el ETAP: entre un campo y el siguiente quedan 10 offsets DI libres (294-303, 386-395...) y 8 AI libres. PENDIENTE: confirmar.",
+    "comando": "compartido",
+    "_comando": "El comando usa el mismo offset (y tag con C) que su señalización (ETAP). En otros clientes (USRE) el comando tiene offset propio."
+  },
+
+  "reservas": { "tag": "N/A", "desc_scada": "RESERVA", "tag_hmi": "N/A", "desc_hmi": "RESERVA", "tipo_punto": "DI" },
+
+  "estados": {
+    "_": "Estados S0-S3 de la tabla del PDF (pág. 1). 'detectar' = expresiones sobre el texto sin tildes ni mayúsculas; la 1ª familia que coincide gana.",
+    "doble_bit": { "00": "NO PERMITIDO", "01": "DESCONECTADO", "10": "CONECTADO", "11": "NO PERMITIDO" },
+    "alarma": { "normal": ["NORMAL", "ACTUO", "N/A", "N/A"], "falla": ["NORMAL", "FALLA", "N/A", "N/A"],
+                "falla_detectar": ["^utr comunicacion"],
+                "falla_revisar": ["falla interna", "falla de comunicacion"] },
+    "familias": [
+      { "id": "sub_baj", "bits": 2, "s": ["error_0", "SUB", "BAJ", "error_1"], "senalizacion": ["\\bsubir\\b|\\bbajar\\b"], "comando": ["\\bsubir\\b|\\bbajar\\b"] },
+      { "id": "sin_con", "bits": 2, "s": ["error_0", "SIN", "CON", "error_1"], "senalizacion": ["habilit"], "comando": ["habilit"] },
+      { "id": "man_aut", "bits": 2, "s": ["error_0", "MAN", "AUT", "error_1"], "senalizacion": ["\\bmanual\\b|automatic"], "comando": ["\\bmanual\\b|automatic"] },
+      { "id": "ex_in", "bits": 2, "s": ["error_0", "EX", "IN", "error_1"], "senalizacion": ["extraid|insertad"], "comando": [] },
+      { "id": "dist_tele", "bits": 2, "s": ["error_0", "DIST", "TELE", "error_1"], "senalizacion": ["telecontrol|\\bdistancia\\b|\\ben d\\b|\\ben t\\b"], "comando": [] },
+      { "id": "loc_rem", "bits": 2, "s": ["error_0", "LOC", "REM", "error_1"], "senalizacion": ["\\blocal\\b|\\bremoto\\b"], "comando": [] },
+      { "id": "par_arr", "bits": 2, "s": ["error_0", "PAR", "ARR", "error_1"], "senalizacion": ["\\bmarcha\\b|\\bparada\\b|arranque"], "comando": ["\\bmarcha\\b|\\bparada\\b|arranque"] },
+      { "id": "ab_ce", "bits": 2, "s": ["error_0", "AB", "CE", "error_1"], "senalizacion": ["\\babierto\\b|\\bcerrado\\b"], "comando": ["\\babrir\\b|\\bcerrar\\b|apertura|cierre"] },
+      { "id": "conect_desconec", "bits": 1, "s": ["CONECT", "DESCONEC", "N/A", "N/A"], "senalizacion": [], "comando": ["desconectar|\\bconectar\\b"] },
+      { "id": "normal_opero", "bits": 1, "s": ["NORMAL", "OPERO", "N/A", "N/A"], "senalizacion": ["consigna|en curso"], "comando": [] }
+    ],
+    "_desviaciones_etap": "El ETAP usa MARCHA/PARADA (PDF: PAR/ARR), CONSIGNA1-3 (PDF: NORMAL/OPERO), TELE/DISTANCIA en 6,6 kV (PDF: DIST/TELE). Se sigue el PDF; la medición del ETAP las cuenta como 'desviación documentada'."
+  },
+
+  "mediciones": {
+    "_": "Juego de 13 mediciones del ETAP, en este orden. 'clase_raw': signed = -32768..32767, unsigned = 0..32767. EU = RAW x factor (valor por defecto: los valores de ingeniería los fija el aparato; PENDIENTE confirmar).",
+    "max_raw": 32767,
+    "juego": [
+      { "patron": "tension.*promedio", "codigo": "VP", "desc": "V Total", "unidad": "KV", "raw": "signed", "factor": 0.1 },
+      { "patron": "corriente.*promedio", "codigo": "IP", "desc": "I Total", "unidad": "A", "raw": "signed", "factor": 0.1 },
+      { "patron": "tension.*fase r", "codigo": "AU", "desc": "V F/U", "unidad": "KV", "raw": "unsigned", "factor": 0.1 },
+      { "patron": "tension.*fase s", "codigo": "AV", "desc": "V F/V", "unidad": "KV", "raw": "unsigned", "factor": 0.1 },
+      { "patron": "tension.*fase t", "codigo": "AW", "desc": "V F/W", "unidad": "KV", "raw": "unsigned", "factor": 0.1 },
+      { "patron": "corriente.*fase r", "codigo": "AR", "desc": "I F/R", "unidad": "A", "raw": "signed", "factor": 0.1 },
+      { "patron": "corriente.*fase s", "codigo": "AS", "unidad": "A", "desc": "I F/S", "raw": "signed", "factor": 0.1 },
+      { "patron": "corriente.*fase t", "codigo": "AT", "desc": "I F/T", "unidad": "A", "raw": "signed", "factor": 0.1 },
+      { "patron": "frecuencia", "codigo": "AF", "desc": "Frecuencia", "unidad": "Hz", "raw": "unsigned", "factor": 0.01 },
+      { "patron": "angulo de fase", "codigo": "AFP", "desc": "cos fi", "unidad": "N/A", "raw": "unsigned", "factor": 0.01 },
+      { "patron": "potencia activa", "codigo": "AP", "desc": "P Activa", "unidad": "MW", "raw": "signed", "factor": 0.1 },
+      { "patron": "potencia aparente", "codigo": "AS", "unidad": "MVA", "desc": "P Aparente", "raw": "signed", "factor": 0.1 },
+      { "patron": "potencia reactiva", "codigo": "AQ", "desc": "P Reactiva", "unidad": "Mvar", "raw": "signed", "factor": 0.1 }
+    ],
+    "saltear_variable_por_nivel": { "3": [4], "1": [12] },
+    "_saltear": "observado: en los campos de 132 kV (303, 302) la variable 04 no se usa; en las celdas de 6,6 kV (101-104) no se usa la 12. PENDIENTE: confirmar.",
+    "servicios_auxiliares": {
+      "campos": ["SACA", "SACC"],
+      "unidad_tension": "V",
+      "raw_tension": "signed",
+      "raw_corriente": "unsigned",
+      "_": "observado: en servicios auxiliares el rango RAW está invertido (tensión con signo, corriente sin signo) y la tensión va en V."
+    }
+  },
+
+  "desc_scada": {
+    "_": "{prefijo del campo} {equipo} {frase|estado}, máx. 20 caracteres. Las abreviaturas viven en glosario.json (aprendidas del ETAP + lineamientos); lo que no se puede componer queda 'a completar'.",
+    "separador": " ",
+    "equipos": {
+      "seccionador": { "SA": "SEC BA", "SB": "SEC BB", "SL": "SEC L", "ST": "SEC T" },
+      "interruptor": "INT"
+    },
+    "_equipos": "observado en el ETAP. El PDF da INT, SBA, SBB, ST: conflicto de documentos (el ETAP usa 'SEC BA'). PENDIENTE: confirmar cuál se usa.",
+    "sinonimos_equipo": { "secc": "seccionador", "seccionador": "seccionador", "interruptor": "interruptor", "int": "interruptor" },
+    "estado_abreviado": {
+      "ab_ce": "", "loc_rem": "L/R", "dist_tele": "T/D", "man_aut": "MAN/AUT", "sin_con": "HAB",
+      "ex_in": "EX/IN", "par_arr": "PAR/ARR", "sub_baj": "SUB/BAJ"
+    },
+    "sufijo_rele": { "ppal": "PPAL", "res": "Presp", "resp": "Presp" },
+    "reglas_texto": [
+      { "patron": "\\bllave\\b", "familia": "dist_tele", "abrev": "LLAVE T/D" },
+      { "patron": "\\brecierre\\b", "familia": "sin_con", "abrev": "REC HAB" },
+      { "patron": "\\b(cbc|rbc)\\b", "familia": "man_aut", "abrev": "RBC MAN/AUTO" }
+    ],
+    "_reglas_texto": "observado en el ETAP: señales sin equipo cuya abreviatura depende del tipo de estado (Llave T/D, Recierre HAB, RBC MAN/AUTO).",
+    "vocabulario_base": {
+      "falta": "F", "tension": "U", "auxiliar": "Aux", "comando": "CMDO", "fuerza": "FZA", "motriz": "MOT",
+      "proteccion": "PROT", "principal": "PPAL", "respaldo": "RESP", "disparo": "DISP", "general": "GRL",
+      "excitacion": "EXC", "tierra": "TIER", "interruptor": "INT", "seccionador": "SEC", "senalizacion": "SENAL",
+      "puerta": "PUE", "abierta": "AB", "maniobra": "M", "incompleta": "INC", "presion": "PRES", "baja": "B",
+      "resorte": "RES", "carga": "CAR", "descargado": "DESC", "comunicacion": "COM", "temperatura": "TEMP",
+      "diferencial": "DIF", "sobrecorriente": "SOBREC", "sobretension": "Umax", "subtension": "Umin",
+      "corriente": "I", "frecuencia": "Frec", "bloqueo": "BLOQ", "transformador": "TRAFO", "ventiladores": "VENT",
+      "ventilador": "VENT", "calefaccion": "CAL", "iluminacion": "ILUM", "medicion": "MED", "multimedidor": "MULT",
+      "servicios": "SS", "alimentacion": "ALIM", "actuada": "ACT", "falla": "FALLA", "interna": "INT"
+    },
+    "_vocabulario_base": "Abreviaturas de palabras sueltas para las PROPUESTAS (lineamientos + ETAP + uso común). Se pisan con lo aprendido del cliente y con lo que conteste el usuario.",
+    "baja_informacion": ["campo", "kv", "vca", "vcc"]
+  }
+}

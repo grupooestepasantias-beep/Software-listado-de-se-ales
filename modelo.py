@@ -74,6 +74,9 @@ class Caratula:
     fecha: str = ""
     referencias: list[Referencia] = field(default_factory=list)
     revisiones: list[Revision] = field(default_factory=list)
+    # Logos de la carátula: ruta de una imagen (png/jpg/gif/bmp); "" = sin logo.
+    logo_cliente: str = ""
+    logo_proyectista: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "Caratula":
@@ -114,6 +117,8 @@ class Senal:
     # generador con segunda_fila=True y su texto sale de obs_segunda_fila de la 1ª (ej. "... Cerrado").
     obs_segunda_fila: str = ""
     segunda_fila: bool = False
+    # De dónde salió DESC. SCADA: "glosario", "reglas", "propuesta" (a confirmar) o "usuario". Vacío = sin generar.
+    desc_scada_origen: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "Senal":
