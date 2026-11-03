@@ -25,6 +25,10 @@ El ZIP se llama `BORRADOR - …` si el control de calidad no da "LISTO PARA ENTR
 - Antes de generar hay una compuerta (`revisar_previos`): valida datos, PDF (revisión, estación, nº de obra, EF/TP) y
   contrasta señales, comandos, térmicas y módulos de hardware contra el plano. Si algo no cierra, **no se genera nada**.
 
+## Descarga directa (sin instalar Python)
+En la sección **Releases** del repositorio (https://github.com/grupooestepasantias-beep/Software-listado-de-se-ales/releases) está `GeneradorSAT.exe`.
+Descargarlo y ejecutarlo; solo hace falta Microsoft Word instalado.
+
 ## Requisitos
 - Windows y Python 3.11+. `pip install -r requirements.txt` (`python-docx`, `pymupdf`).
 - **Microsoft Word** instalado (se usa por COM para actualizar índice/campos y exportar PDF). Sin Word se generan los
@@ -81,7 +85,7 @@ python -m PyInstaller --noconfirm --onefile --windowed --name GeneradorSAT ^
   --add-data "plantilla_fat_anexo1.docx;." --add-data "plantilla_fat_anexo2.docx;." ^
   --exclude-module pymupdf.layout --exclude-module pymupdf4llm --exclude-module onnxruntime --exclude-module PIL app.py
 ```
-Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del .exe. El .exe no se sube al repositorio.
+Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del .exe. El .exe se publica en Releases, no dentro del código.
 
 ## Estado y pendientes
 - Funciona: SAT (1 archivo) + FAT con Anexos 1 y 2, PDF, ZIP, trazabilidad, control de calidad, versiones.
@@ -89,4 +93,5 @@ Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del
   valores y normas del ensayo dieléctrico, descripciones/tensión de térmicas que no están en el plano, borne de
   "Falla Alimentación General" (el plano no lo da), SCADA SURVALENT.
 - Ideas de mejora: interfaz sin dependencia de Word, plantillas editables desde la ventana, lectura de más formatos de plano.
+
 
