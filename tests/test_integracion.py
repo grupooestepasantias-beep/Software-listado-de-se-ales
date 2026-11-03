@@ -42,6 +42,12 @@ class TestApp(unittest.TestCase):
         principal.DialogoOffsets = Falso
         principal.mostrar_texto = lambda *a, **k: self.mensajes.append(("resumen", a[2]))
         self.app.wait_window = lambda w: None   # los diálogos falsos no son ventanas reales
+        # El glosario real (perfiles/EPEN/glosario.json) guarda lo que el usuario confirmó al usar la app: las pruebas
+        # parten de uno vacío para no depender de eso ni modificarlo.
+        import scada
+        original = scada.Glosario.__dict__["cargar"]
+        scada.Glosario.cargar = classmethod(lambda cls, ruta: cls())
+        self.addCleanup(setattr, scada.Glosario, "cargar", original)
         self.addCleanup(self._restaurar)
         self.addCleanup(self.app.destroy)
 
@@ -174,6 +180,11 @@ class TestApp(unittest.TestCase):
             self.assertEqual((ws["H6"].value, ws["I6"].value, ws["K6"].value, ws["L6"].value, ws["O6"].value),
                              ("204.101", 200, "NORMAL", "ACTUO", "N/A"))
             self.assertEqual((ws["H8"].value, ws["I8"].value, ws["I9"].value), ("204.122C", 202, 203))
+            # paso de calidad: la versión final, el informe y el registro de cambios quedan al lado; lo exportado no se toca
+            for nombre in ("x_final.xlsx", "x_final_informe_calidad.md", "x_final_cambios.csv"):
+                self.assertTrue((Path(t) / nombre).is_file(), nombre)
+            self.assertIn("Versión final", self.mensajes[-1][1])
+            self.assertEqual(load_workbook(Path(t) / "x_final.xlsx")["EPEN"]["H6"].value, "204.101")
 
     def test_exporta_solo_listado_sin_caratula_ni_scada(self):
         from openpyxl import load_workbook

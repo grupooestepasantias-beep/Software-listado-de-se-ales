@@ -15,16 +15,21 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+import correcciones
+import cruce
+import documentos
 import excel_writer
 import pdf_plano
 import perfiles
-from modelo import Campo, Funcion, Nivel, Proyecto, Senal
+from modelo import NA, Campo, Funcion, Nivel, Proyecto, Senal, TipoPunto
 
+import calidad
 import catalogo
 import scada
 
 from .caratula_ui import PestanaCaratula
 from .catalogo_ui import VentanaCatalogo
+from .verificacion_ui import DialogoVerificacion as VerificacionDialogo
 from .scada_ui import (DialogoOffsets, VentanaPropuestas, mostrar_texto, pendientes_de_confirmar,
                        resumen_informe)
 
@@ -43,6 +48,11 @@ COLUMNAS_SCADA = (
 )
 CLAVES_SCADA = tuple(c[0] for c in COLUMNAS_SCADA)
 ULTIMA_COLUMNA_SCADA = "O"
+# Columnas P, S, T (UTR): tipo de señal, placa (módulo del plano) y entrada/salida; salen de las páginas del plano.
+COLUMNAS_UTR = (
+    ("tipo_punto", "UTR / TIPO", 70, True), ("placa", "PLACA ENTRADA", 100, True), ("entrada", "ENTRADA", 80, True),
+)
+ULTIMA_COLUMNA_UTR = "T"
 
 
 class DialogoCampo(tk.Toplevel):
@@ -132,14 +142,27 @@ class DialogoPaginas(tk.Toplevel):
         self.filas: list[tuple] = []
         self.entradas = catalogo.cargar()["entradas"]
         self.valores = catalogo.valores_desplegable(self.entradas)
-        f = ttk.Frame(self, padding=10)
-        f.pack()
-        ttk.Label(f, text="Revisá los datos de cada campo. El NOMBRE (ej. LC, GTR01) forma el prefijo de DESC. HMI. "
+        b = ttk.Frame(self, padding=(10, 4, 10, 10))
+        b.pack(side="bottom", fill="x")
+        marco = ttk.Frame(self)
+        marco.pack(side="top", fill="both", expand=True)
+        lienzo = tk.Canvas(marco, highlightthickness=0, width=1180, height=480)  # con varios PDF son muchas filas
+        sb = ttk.Scrollbar(marco, orient="vertical", command=lienzo.yview)
+        lienzo.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        lienzo.pack(side="left", fill="both", expand=True)
+        f = ttk.Frame(lienzo, padding=10)
+        lienzo.create_window((0, 0), window=f, anchor="nw")
+        f.bind("<Configure>", lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")))
+        ttk.Label(f, text="NIVEL o CAMPO en NARANJA = no está escrito en el cajetín de la hoja; la app lo dedujo de los "
+                          "rótulos y puede fallar: revisalo. Revisá los datos de cada campo. El NOMBRE (ej. LC, GTR01) forma el prefijo de DESC. HMI. "
                           "Las señales de protección (Prot. …) llevan el relé del campo. MEDICIONES: tildado si el plano "
-                          "nombra un multimedidor en ese campo.",
-                  foreground="#555").grid(row=0, column=0, columnspan=9, sticky="w", pady=(0, 6))
+                          "nombra un multimedidor en ese campo. PLACAS: la placa de cada módulo de E/S de la página, de "
+                          "izquierda a derecha (el plano la dibuja, no se puede leer): alcanza con escribir la primera "
+                          "(A4.2) y las demás siguen solas (A4.3, A4.4…). La ENTRADA (DI17) sí se lee del plano.",
+                  foreground="#555", wraplength=1000, justify="left").grid(row=0, column=0, columnspan=12, sticky="w", pady=(0, 6))
         for j, t in enumerate(("PÁG.", "NIVEL", "CAMPO", "NOMBRE", "DESCRIPCIÓN DEL CAMPO", "CONTROLADOR",
-                               "RELÉ DE PROTECCIÓN", "MEDICIONES", "SEÑ.")):
+                               "RELÉ DE PROTECCIÓN", "MEDICIONES", "SEÑ.", "PLACAS (ej. A4.2)", "MÓDULOS", "ARCHIVO")):
             ttk.Label(f, text=t, font=("Segoe UI", 8, "bold")).grid(row=1, column=j, padx=2, sticky="w")
         for i, pg in enumerate(paginas, start=2):
             v = [tk.StringVar(value=pg.nivel), tk.StringVar(value=pg.campo), tk.StringVar(value=lugar),
@@ -155,24 +178,31 @@ class DialogoPaginas(tk.Toplevel):
                         if catalogo.lleva_tension(var.get(), self.entradas) else var.get()))
                     cb.grid(row=i, column=j, padx=2, pady=1)
                 else:
-                    ttk.Entry(f, textvariable=var, width=w).grid(row=i, column=j, padx=2, pady=1)
+                    inferido = (j == 1 and "nivel" in pg.inferidos) or (j == 2 and "campo" in pg.inferidos)
+                    ttk.Entry(f, textvariable=var, width=w, foreground="#c2410c" if inferido else "").grid(
+                        row=i, column=j, padx=2, pady=1)
             ttk.Checkbutton(f, variable=mide).grid(row=i, column=7, padx=2)
             ttk.Label(f, text=f"{len(pg.senales)} ({'relé' if pg.origen == 'rele' else 'E/S'})").grid(row=i, column=8, padx=2)
-            self.filas.append((pg.pagina, *v, mide))
-        b = ttk.Frame(f)
-        b.grid(row=len(paginas) + 2, column=0, columnspan=9, sticky="e", pady=(8, 0))
+            placas = tk.StringVar()
+            if pg.modulos:
+                ttk.Entry(f, textvariable=placas, width=16).grid(row=i, column=9, padx=2)
+            ttk.Label(f, text=" · ".join(m.tipo + (" ⚠" if m.aviso else "") for m in pg.modulos) or "—",
+                      foreground="#555").grid(row=i, column=10, padx=2, sticky="w")
+            ttk.Label(f, text=pg.archivo, foreground="#555").grid(row=i, column=11, padx=2, sticky="w")
+            self.filas.append((pg.clave, *v, mide, placas))
         ttk.Button(b, text="Cancelar", command=self.destroy).pack(side="right", padx=4)
         ttk.Button(b, text="Armar listado", command=self._ok).pack(side="right")
         self.grab_set()
 
     def _ok(self) -> None:
         destinos = {}
-        for pagina, niv, cam, nom, des, ctl, rele, mide in self.filas:
+        for pagina, niv, cam, nom, des, ctl, rele, mide, placas in self.filas:
             if not niv.get().strip() or not cam.get().strip():
-                messagebox.showwarning("Falta dato", f"Completá nivel y campo en la página {pagina}.", parent=self)
+                donde = f"{pagina[1]} de {pagina[0]}" if isinstance(pagina, tuple) else str(pagina)
+                messagebox.showwarning("Falta dato", f"Completá nivel y campo en la página {donde}.", parent=self)
                 return
             destinos[pagina] = (niv.get().strip(), cam.get().strip(), des.get().strip(), ctl.get().strip(),
-                                nom.get().strip(), rele.get().strip(), mide.get())
+                                nom.get().strip(), rele.get().strip(), mide.get(), placas.get().strip())
         self.resultado = destinos
         self.destroy()
 
@@ -210,7 +240,7 @@ class App(tk.Tk):
 
         arriba = ttk.Frame(raiz)
         arriba.pack(fill="x")
-        ttk.Button(arriba, text="Cargar PDF de plano…", command=self.cargar_pdf).pack(side="left")
+        ttk.Button(arriba, text="Cargar PDF de planos…", command=self.cargar_pdf).pack(side="left")
         ttk.Label(arriba, text="ITEM inicial").pack(side="left", padx=(14, 3))
         ttk.Entry(arriba, textvariable=self.item, width=6).pack(side="left")
         ttk.Label(arriba, text="Nombre de campo por defecto (ej. LC)").pack(side="left", padx=(14, 3))
@@ -237,6 +267,8 @@ class App(tk.Tk):
         self.arbol.tag_configure("grupo", background="#eef3fb")
         self.arbol.tag_configure("reserva", foreground="#777")
         self.arbol.tag_configure("propuesta", background="#fff3bf")  # DESC. SCADA propuesta, a confirmar
+        self.arbol.tag_configure("inferido", foreground="#c2410c")   # nivel/campo deducidos, no escritos en el plano
+        self.arbol.tag_configure("corregido", foreground="#15803d")  # TAG/DESC. HMI según una corrección del usuario
         sy = ttk.Scrollbar(marco, orient="vertical", command=self.arbol.yview)
         sx = ttk.Scrollbar(marco, orient="horizontal", command=self.arbol.xview)
         self.arbol.configure(yscrollcommand=sy.set, xscrollcommand=sx.set)
@@ -246,6 +278,7 @@ class App(tk.Tk):
         marco.rowconfigure(0, weight=1)
         marco.columnconfigure(0, weight=1)
         self.arbol.bind("<Double-1>", self._editar)
+        self.arbol.bind("<<TreeviewSelect>>", self._mostrar_origen)
 
     # ------------------------------------------------------------ tabla
     def _item_inicial(self) -> int:
@@ -268,10 +301,20 @@ class App(tk.Tk):
     def _valores_scada(s: Senal) -> tuple:
         return (s.tag_scada, "" if s.offset is None else s.offset, s.desc_scada, s.s0, s.s1, s.s2, s.s3, s.unidad)
 
+    def _hay_utr(self) -> bool:
+        """¿Alguna fila tiene placa o entrada (leídas del plano o cargadas a mano)? Entonces se muestran P, S y T."""
+        return any(s.placa != NA or s.entrada != NA
+                   for n in self.niveles for c in n.campos for s in c.senales)
+
+    @staticmethod
+    def _valores_utr(s: Senal) -> tuple:
+        return (s.tipo_punto.value if s.tipo_punto else "", s.placa, s.entrada)
+
     def refrescar(self) -> None:
-        con_scada = self._hay_scada()
-        if con_scada != (self._cols is not COLUMNAS):  # aparecen/desaparecen las columnas H-O
-            self._configurar_columnas(COLUMNAS + COLUMNAS_SCADA if con_scada else COLUMNAS)
+        con_scada, con_utr = self._hay_scada(), self._hay_utr()
+        cols = COLUMNAS + (COLUMNAS_SCADA if con_scada else ()) + (COLUMNAS_UTR if con_utr else ())
+        if cols != self._cols:  # aparecen/desaparecen las columnas H-O y P-S-T
+            self._configurar_columnas(cols)
         self.arbol.delete(*self.arbol.get_children())
         self.filas.clear()
         n = self._item_inicial()
@@ -284,8 +327,12 @@ class App(tk.Tk):
                                s.controlador, s.funcion.value, s.tag_hmi, s.desc_hmi)
                     if con_scada:
                         valores += self._valores_scada(s)
+                    if con_utr:
+                        valores += self._valores_utr(s)
                     tags = (("grupo",) if primera_campo else ()) + (("reserva",) if s.funcion == Funcion.RESERVA else ()) \
-                        + (("propuesta",) if s.desc_scada_origen == "propuesta" else ())
+                        + (("propuesta",) if s.desc_scada_origen == "propuesta" else ()) \
+                        + (("inferido",) if "inferido:" in s.observaciones else ()) \
+                        + (("corregido",) if "corregido por el usuario" in s.observaciones else ())
                     iid = self.arbol.insert("", "end", values=valores, tags=tags)
                     self.filas[iid] = (nivel, campo, s)
                     n += 1
@@ -445,7 +492,8 @@ class App(tk.Tk):
             self._elegir_controlador(nivel, campo, s)
             return
         base = {"nivel": nivel.nombre, "descrip": campo.descripcion, "controlador": s.controlador,
-                "funcion": s.funcion.value, "tag_hmi": s.tag_hmi, "desc_hmi": s.desc_hmi}
+                "funcion": s.funcion.value, "tag_hmi": s.tag_hmi, "desc_hmi": s.desc_hmi,
+                "tipo_punto": s.tipo_punto.value if s.tipo_punto else ""}
         actual = base[clave] if clave in base else ("" if getattr(s, clave) is None else str(getattr(s, clave)))
         x, y, w, h = self.arbol.bbox(iid, col)
         ent = tk.Entry(self.arbol)
@@ -503,6 +551,13 @@ class App(tk.Tk):
                 raise ValueError("Función válida: " + ", ".join(validas))
             s.funcion = f
             s.es_reserva = f == Funcion.RESERVA
+        elif clave == "tipo_punto":
+            v = texto.upper()
+            if v and v not in {t.value for t in TipoPunto}:
+                raise ValueError("Tipo válido: " + ", ".join(t.value for t in TipoPunto))
+            s.tipo_punto = TipoPunto(v) if v else None
+        elif clave in ("placa", "entrada"):
+            setattr(s, clave, texto or NA)
         elif clave in CLAVES_SCADA:  # lo editado a mano en H-O queda fijo: «Generar SCADA…» no lo pisa
             if clave == "offset":
                 if texto and not texto.isdigit():
@@ -518,23 +573,36 @@ class App(tk.Tk):
                 s.fijos.append(clave)
         else:
             setattr(s, clave, texto)
+            rotulo = correcciones.rotulo_de(s.observaciones)
+            if clave in correcciones.CAMPOS and rotulo:  # la corrección queda como referencia para las próximas cargas
+                correcciones.guardar(self.perfil.id, rotulo, clave, texto, campo.prefijo or "")
+                if "corregido por el usuario" not in s.observaciones:
+                    s.observaciones += " | corregido por el usuario"
+
+    def _mostrar_origen(self, _ev=None) -> None:
+        """Al elegir una fila, la barra de estado dice de qué archivo/página salió y si fue leída, inferida o corregida."""
+        sel = self._seleccion()
+        if len(sel) == 1 and sel[0][2].observaciones:
+            self.estado.config(text="Origen: " + sel[0][2].observaciones)
 
     # ------------------------------------------------------------ PDF
     def cargar_pdf(self) -> None:
-        ruta = filedialog.askopenfilename(title="Plano de ingeniería", filetypes=[("PDF", "*.pdf")])
-        if not ruta:
+        rutas = filedialog.askopenfilenames(title="Planos de ingeniería (podés elegir varios)",
+                                            filetypes=[("PDF", "*.pdf")])
+        if not rutas:
             return
-        self.estado.config(text="Leyendo el PDF…")
+        self.estado.config(text="Leyendo los PDF…")
 
         def trabajo():
             try:
-                info: dict = {}
-                res = pdf_plano.leer_plano(
-                    ruta, self.perfil, avance=lambda n, t: self.cola.put(("avance", n, t)), info=info)
-                self.cola.put(("ok", res, ruta, info))
-            except (pdf_plano.PdfSinTexto, pdf_plano.PdfNoEsquema, pdf_plano.PdfNoDisponible) as e:
-                self.cola.put(("error", str(e)))  # avisos propios: sin el nombre de la clase
-            except Exception as e:  # PDF dañado, vocabulario del perfil roto…
+                res, informe = pdf_plano.leer_planos(
+                    rutas, self.perfil, avance=lambda nom, n, t: self.cola.put(("avance", n, t, nom)))
+                # segunda pasada: todas las páginas de cada PDF (OCR en las dibujadas), índices y listas de señales
+                docs = [documentos.leer_documento(
+                    r, usar_ocr=True, avance=lambda nom, n, t: self.cola.put(("avance", n, t, f"{nom} (documentación)")))
+                    for r in rutas]
+                self.cola.put(("ok", res, informe, cruce.verificar(res, docs)))
+            except Exception as e:  # leer_planos ya aísla los errores de cada archivo: esto sería un fallo interno
                 self.cola.put(("error", f"{type(e).__name__}: {e}"))
 
         threading.Thread(target=trabajo, daemon=True).start()
@@ -545,29 +613,47 @@ class App(tk.Tk):
             while True:
                 msg = self.cola.get_nowait()
                 if msg[0] == "avance":
-                    self.estado.config(text=f"Leyendo el PDF… página {msg[1]} de {msg[2]}")
+                    self.estado.config(text=f"Leyendo {msg[3]}… página {msg[1]} de {msg[2]}")
                 elif msg[0] == "error":
                     self.refrescar()
                     messagebox.showerror("No se pudo leer el PDF", msg[1])
                     return
                 else:
-                    self._paginas_leidas(msg[1], msg[2], msg[3])
+                    self._paginas_leidas(msg[1], msg[2], msg[3] if len(msg) > 3 else None)
                     return
         except queue.Empty:
             self.after(150, self._sondear)
 
-    def _paginas_leidas(self, paginas: list, ruta: str = "", info: dict | None = None) -> None:
+    @staticmethod
+    def resumen_informe(informe: list[dict]) -> str:
+        """Una línea por archivo: cuántas páginas con señales dio o por qué no pudo leerse."""
+        marcas = {"ok": "✔", "sin_senales": "—", "error": "✖"}
+        lineas = []
+        for f in informe:
+            if f["estado"] == "ok":
+                lineas.append(f"{marcas['ok']} {f['archivo']}: {f['leidas']} páginas con señales de {f['paginas']}")
+            else:
+                lineas.append(f"{marcas[f['estado']]} {f['archivo']}: {f['mensaje']}")
+        return "\n".join(lineas)
+
+    def _paginas_leidas(self, paginas: list, informe: list[dict] | None = None, verificacion=None) -> None:
         self.refrescar()
+        informe = informe or []
+        if verificacion is not None and (paginas or verificacion.recuperadas or verificacion.tableros):
+            ver = VerificacionDialogo(self, verificacion)   # antes de armar el listado: qué se verificó y qué falta
+            self.wait_window(ver)
+            if not ver.continuar:
+                return
+        problemas = [f for f in informe if f["estado"] != "ok"]
         if not paginas:
-            i = info or {}
-            detalle = (f"\n\nArchivo: {Path(ruta).name}\nDetalle: {i.get('paginas', '?')} páginas, "
-                       f"{i.get('caracteres', '?')} caracteres de rótulos, {i.get('con_rotulos', '?')} páginas con rótulos, "
-                       f"{i.get('con_franja', '?')} con módulos de E/S, {i.get('con_tira', '?')} con tira de relé.")
             messagebox.showinfo(
-                "Sin señales", "No encontré páginas con módulos de entradas/salidas ni tiras de señales de relé en ese "
-                "PDF.\n\nLa app lee los ESQUEMAS FUNCIONALES (EF) de los tableros de control (TC) y de protección (TP). "
-                "No lee los esquemas constructivos, de medición (TMA), de comunicaciones ni unifilares." + detalle)
+                "Sin señales", "No encontré páginas con módulos de entradas/salidas ni tiras de señales de relé.\n\n"
+                "La app lee los ESQUEMAS FUNCIONALES (EF) de los tableros de control (TC) y de protección (TP). "
+                "No lee los esquemas constructivos, de medición (TMA), de comunicaciones ni unifilares.\n\n"
+                + self.resumen_informe(informe))
             return
+        if problemas:  # los demás archivos siguen: solo se avisa cuáles no aportaron
+            messagebox.showwarning("Algunos archivos no aportaron señales", self.resumen_informe(informe))
         dlg = DialogoPaginas(self, paginas, self.cfg, self.lugar.get().strip())
         self.wait_window(dlg)
         if not dlg.resultado:
@@ -620,15 +706,28 @@ class App(tk.Tk):
             self.pestanas.select(self.caratula_ui)
             messagebox.showerror("Revisá la carátula", "\n".join(problemas))
             return
-        con_scada = self._hay_scada()
+        con_scada, con_utr = self._hay_scada(), self._hay_utr()
+        hasta = ULTIMA_COLUMNA_UTR if con_utr else (ULTIMA_COLUMNA_SCADA if con_scada else ULTIMA_COLUMNA)
         try:
             excel_writer.escribir_xlsx(self._proyecto(), self.perfil, Path(ruta), incluir_caratula=con_caratula,
-                                       hasta_columna=ULTIMA_COLUMNA_SCADA if con_scada else ULTIMA_COLUMNA)
+                                       hasta_columna=hasta)
         except (excel_writer.PlantillaNoEncontrada, ValueError, OSError) as e:
             messagebox.showerror("No se pudo exportar", str(e))
             return
-        partes = (["carátula"] if con_caratula else []) + ["listado A-G"] + (["SCADA H-O"] if con_scada else [])
-        messagebox.showinfo("Exportado", f"Excel generado ({', '.join(partes)}) en:\n{ruta}")
+        partes = ((["carátula"] if con_caratula else []) + ["listado A-G"] + (["SCADA H-O"] if con_scada else [])
+                  + (["UTR P-S-T"] if con_utr else []))
+        messagebox.showinfo("Exportado", f"Excel generado ({', '.join(partes)}) en:\n{ruta}" + self._calidad(Path(ruta)))
+
+    def _calidad(self, ruta: Path) -> str:
+        """Paso de calidad sobre lo exportado: deja `<nombre>_final.xlsx` (redacción normalizada y validada), el informe
+        y el registro de cambios al lado. El Excel exportado no se toca. Un fallo acá no frena la exportación."""
+        try:
+            inf = calidad.mejorar_archivo(ruta, perfil_id=self.perfil.id)
+        except Exception as e:  # noqa: BLE001 - el Excel ya está exportado; solo se avisa
+            return f"\n\nNo se pudo generar la versión final con redacción normalizada:\n{e}"
+        estado = "sin errores bloqueantes" if inf.aprobado else "CON ERRORES BLOQUEANTES (ver el informe)"
+        return (f"\n\nVersión final: {inf.salida}\nInforme de calidad: {inf.ruta_md}\nCambios celda por celda: {inf.ruta_csv}\n"
+                f"{inf.resumen_corto()} — {estado}.")
 
     # ------------------------------------------------------------ SCADA (columnas H-O)
     def generar_scada(self) -> None:

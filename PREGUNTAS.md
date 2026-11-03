@@ -9,8 +9,16 @@ Formato: `[ ] pregunta` → al responder, `[x] pregunta — respuesta`. Las resp
 - [ ] La carátula admite 14 referencias y 4 revisiones (lo que tiene la plantilla del ETAP). Si hay más, ¿se agranda la plantilla o se hace otra hoja?
 - [x] ¿La carátula va en la misma app que la tabla? — el usuario pidió integrarla: ahora es la pestaña «Carátula» de la app (2026-10-29).
 
+## Calidad de redacción (PC-A, 2026-11-03)
+- [ ] **Tildes:** el ETAP no tiene ninguna tilde ni ñ en las descripciones, así que el paso de calidad las QUITA (`Tensión` → `Tension`). Tu pedido decía corregir `Tension`→`Tensión`: ¿los sistemas HMI/SCADA aceptan tildes? Si sí, se cambia una línea (`redaccion.json` → `tildes.modo: "agregar"`).
+- [ ] Unidad de tensión: el ETAP usa `kV` sin espacio y coma decimal (`6,6kV`, `132kV`). ¿Dejamos ese estilo o preferís `33 kV` con espacio?
+- [ ] Textos con otra tensión que la del campo (p. ej. `Campo 05 33KV` dentro de un campo de 132KV): vienen del plano. ¿Son error del plano o el campo realmente es de 33KV? Hoy solo se marcan.
+- [ ] DESC. SCADA repetidas entre señales distintas (p. ej. `305tr SEC BB F/Uaux` ×3): ¿se aceptan o hay que diferenciarlas?
+- [ ] ¿Largo máximo de DESC. HMI y TAG HMI? (el mayor del ETAP mide 70 en DESC. HMI.)
+
 ## Tabla A-G (PC-B)
-- [ ] Salidas (comandos/DO): por ahora sin PLACA/ENTRADA. Si se retoman: ¿el par es el N.º de relé de salida (borne/2, ej. 9/10) o los bornes impresos?
+- [x] Salidas (comandos/DO): PLACA/ENTRADA ya se leen del plano (2026-10-30): la salida n está en el borne 2n y un comando Apertura/Cierre va como par, ej. `9/10`.
+- [ ] **UTR (PC-A, 2026-10-30):** (1) La ENTRADA se calcula contando solo los bornes de entrada (los "Negativo 48 VCC" no cuentan): borne 21 = DI17, como en tu imagen. ¿Es la regla en todos los módulos, o hay módulos con otra numeración (de 16 DI, analógicos)? (2) Las SALIDAS: asumo que la salida n está en el borne 2n (DO9 = borne 18), como pide el par `9/10` del ETAP; ¿es así? (3) La PLACA (A4.2) está dibujada, no se puede leer: ¿se escribe siempre a mano por módulo, o hay una regla (el nombre sale del tablero)? (4) Las señales de los tableros de protección (tiras de relé) quedan sin placa/entrada: ¿es correcto?
 - [ ] ¿Qué otras abreviaturas del plano se expanden en la DESC. HMI? Hoy: Secc., Prot., Ten., Conj., Cmdo, F Motriz. Candidatas: SSAA, Vca/VCC, QF4/QM4/QC4 ACTUADA, TI/TV, "en D"/"en T", Med.
 - [ ] En el TAG, "Fuerza" se abrevia Fza (vocabulario del ETAP). ¿O preferís F_Motriz?
 - [ ] ¿Hay un largo máximo para TAG y DESC. HMI?
@@ -37,3 +45,8 @@ Respondido por los datos de los ejemplos (verificado contra el ETAP; ver `prueba
 - [ ] Servicios auxiliares (TSACA / TSACPT): las hojas traen señales como "Falta tensión Int Ppal 110VCC" e "Interruptor QA Abrir/Cerrar". En el ETAP esos campos se llaman SACC/SACA, con nivel SSAA y controlador SEL-2241_SSAA. ¿Qué tablero corresponde a cuál (TSACPT = continua → SACC, TSACA = alterna → SACA)?
 - [ ] Los PDF "para CAO" no tienen texto (son imágenes). ¿Siempre existe la versión "_CAF"/"_B" con texto para usar en su lugar?
 - [ ] (PC-B) 19 de los 103 PDF vigentes de `ape` son imágenes (versiones "para CAO", "Correciones", hojas de SMEC/CAMMESA). ¿Es con esos con los que probaste? Para leerlos haría falta instalar un OCR (paquete pip de ~60 MB, puede fallar con la letra de los planos).
+
+## Análisis de documentación (Senillosa) — PC-B, 2026-11-02
+- [ ] Hojas "ENTRADAS DIGITALES – ALARMAS" de TDCI (72 canales, 39 con nombre) y de SSAA1/SSAA2 (48 y 75 señales): hoy se leen por OCR y se informan en la ventana de verificación (pestaña «Señales de tableros»), pero NO entran solas al listado. ¿Con qué NIVEL, CAMPO y FUNCIÓN las lista EPEN (¿ALARMAS, nivel de servicios auxiliares?) y cuál es el controlador (¿el módulo DI del TDCI?)? Con la respuesta se pueden sumar al listado.
+- [ ] Campo 01 del TCONTROL: el EF no trae "Reconectador 152/01 con recierre / sin recierre" y la lista de señales (hoja 75) sí. ¿Se agregan al listado como ALARMAS (como en los campos 03/04/05)?
+- [ ] Los campos 03/04/05 no tienen "Disparo / Falla protección de cuba cable" en sus listas (hojas 77/79/81) aunque sí en el EF: ¿es así en el proyecto o falta en la lista?

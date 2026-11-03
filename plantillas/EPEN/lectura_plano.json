@@ -2,11 +2,21 @@
   "_nota": "Vocabulario para leer los planos de ingeniería (PDF) de este cliente. Es una propuesta: el usuario la revisa en la app.",
   "ignorar_prefijos": [
     "Positivo",
-    "Negativo"
+    "Negativo",
+    "Común negativo",
+    "Común positivo",
+    "Comun negativo",
+    "Comun positivo"
   ],
   "reserva": "Reserva",
   "min_columnas_pagina": 6,
   "x_minimo_rel": 0.125,
+  "_modulos": "Numeración de las entradas (DI17) y salidas (DO9) de un módulo de E/S a partir de la posición de los bornes. Cada módulo son 2 bloques de 16 bornes con un hueco de ~2,4 pasos entre ellos (medido en el plano 6402); en los módulos de entradas los bornes de alimentación (Negativo) no cuentan como entrada; en los de salidas la salida n está en el borne 2n.",
+  "modulos": {
+    "bornes_por_bloque": 16,
+    "separacion_bloques_en_pasos": 2.4,
+    "bornes_negativos_entradas": [10, 12, 14, 16, 26, 28, 30, 32]
+  },
   "palabras_salida": [
     "Cierre",
     "Apertura",

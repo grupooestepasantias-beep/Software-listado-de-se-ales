@@ -29,6 +29,15 @@ Estados: [ ] pendiente · [~] en curso · [x] hecho · [!] bloqueado · [-] susp
 | S5 | Integrar H-O a la app principal de `codigo\` (botón «Generar SCADA…», offsets iniciales, columnas H-O, «Propuestas SCADA…» para confirmar y recordar) | PC-A (pedido del usuario) | [x] 2026-10-29 paquete `scada/`, `app/scada_ui.py`, `app/principal.py` |
 | I1 | **App completa con las 3 partes** (carátula + A-G + H-O) y exportación a UN Excel; 123 tests OK; corrida real con el plano 6402 (`..\prueba_scada\integrado.xlsx`) | PC-A | [x] 2026-10-29 |
 | I2 | Probar la app integrada con otros planos, ajustar y pulir la interfaz | PC-B | [ ] |
+| U1 | **UTR P-S-T**: tipo (DI/DO), placa y entrada/salida de cada señal leídas del plano (geometría de bornes; la placa se escribe por módulo en el diálogo de páginas); columnas editables en la tabla y exportadas hasta la T | PC-A (pedido del usuario) | [x] 2026-10-30 `pdf_plano.py`, `app/principal.py`, `tests/test_utr.py` |
+| U2 | Probar la UTR con otros planos de control (otros módulos o geometría) y confirmar con el usuario la regla de numeración | PC-B + usuario | [ ] |
+
+## Calidad del listado (pedido del usuario, 03/11)
+| # | Tarea | Dueño | Estado |
+|---|---|---|---|
+| Q1 | Paso de calidad `calidad/`: normalizar redacción, contrastar con el ETAP por TAG, encabezado/pie, validaciones, informe y CSV de cambios; integrado a «Exportar» (`x_final.xlsx`); 38 tests | PC-A | [x] 2026-11-03 |
+| Q2 | Revisar con el usuario las reglas de `perfiles/EPEN/redaccion.json` (tildes sí/no, siglas, unidad kV) y los casos «para revisar» del informe; confirmar largo máximo de DESC. HMI | PC-A + usuario | [ ] |
+| Q3 | Corregir en `pdf_plano` el NIVEL `6.6KV` → `6,6KV` y los textos con la tensión equivocada que vienen del plano (hoy solo los marca el informe) | PC-B | [ ] |
 
 ## Cierre
 | # | Tarea | Dueño | Estado |

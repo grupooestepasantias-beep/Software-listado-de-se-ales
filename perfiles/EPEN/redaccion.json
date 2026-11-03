@@ -1,0 +1,69 @@
+{
+  "id": "EPEN",
+  "_nota": "Reglas de redaccion del cliente para el paso de calidad (paquete calidad/). Todo lo que depende del cliente vive aca; el codigo no tiene textos de EPEN. Se ajusta sin tocar Python.",
+  "hoja": "EPEN",
+  "primera_fila": 6,
+  "columnas": {
+    "nivel": "B", "descrip": "C", "funcion": "E",
+    "tag_hmi": "F", "desc_hmi": "G", "tag_scada": "H", "offset": "I", "desc_scada": "J"
+  },
+  "_columnas_texto": "Solo se corrigen estas columnas. Todas las demas (ITEM, NIVEL, CONTROLADOR, FUNCION, TAG HMI, TAG SCADA, OFFSET, estados, unidades, UTR) son identificadores o datos y no se tocan nunca.",
+  "columnas_texto": ["C", "G", "J"],
+  "valores_intactos": ["N/A", "RESERVA"],
+  "tildes": {
+    "modo": "quitar",
+    "_motivo": "El ETAP de referencia no tiene ni una tilde ni ñ en DESCRIP / DESC. HMI / DESC. SCADA (0 de ~1200 celdas) y hmi.py ya genera sin tildes: los sistemas HMI/SCADA destino reciben ASCII. 'quitar' = sin tildes (convencion del cliente); 'agregar' = ortografia castellana completa con el diccionario de abajo; 'no_tocar' = dejar como esta.",
+    "diccionario": {
+      "tension": "tensión", "proteccion": "protección", "senalizacion": "señalización", "calefaccion": "calefacción",
+      "mecanica": "mecánica", "iluminacion": "iluminación", "alimentacion": "alimentación", "comunicacion": "comunicación",
+      "excitacion": "excitación", "exploracion": "exploración", "operacion": "operación", "posicion": "posición",
+      "actuacion": "actuación", "funcion": "función", "angulo": "ángulo", "medicion": "medición", "senal": "señal",
+      "electrica": "eléctrica", "electrico": "eléctrico", "automatico": "automático",
+      "teleproteccion": "teleprotección", "refrigeracion": "refrigeración", "ventilacion": "ventilación",
+      "descripcion": "descripción", "sobretension": "sobretensión", "subtension": "subtensión", "conexion": "conexión",
+      "desconexion": "desconexión", "interrupcion": "interrupción", "terminacion": "terminación"
+    }
+  },
+  "tension": {
+    "unidad": "kV",
+    "decimal": ",",
+    "_nota": "Estilo del ETAP: 132kV, 6,6kV, 33kV (sin espacio, 'k' minuscula y 'V' mayuscula, coma decimal). Un numero suelto de nivel despues de 'Campo NN' ('Campo 04 33 Falta Tension') se completa SOLO si coincide con el NIVEL de la fila.",
+    "niveles": ["132", "33", "13,2", "6,6"]
+  },
+  "separadores": true,
+  "campo_pegado": true,
+  "errores_conocidos": {
+    "Tencion": "Tension", "Tenson": "Tension", "Secionador": "Seccionador", "Seccionadr": "Seccionador",
+    "Interuptor": "Interruptor", "Interrupor": "Interruptor", "Interuptor": "Interruptor",
+    "Proteccon": "Proteccion", "Protecion": "Proteccion", "Calefacion": "Calefaccion",
+    "Senalizacon": "Senalizacion", "Mecanca": "Mecanica",
+    "Disparao": "Disparo", "Auxilar": "Auxiliar", "Auxiliiar": "Auxiliar",
+    "Resorte Descargdo": "Resorte Descargado", "Multimedior": "Multimedidor", "Multimedidr": "Multimedidor"
+  },
+  "terminos": [
+    { "buscar": "Ssaa", "poner": "SSAA", "columnas": ["G", "J"], "regla": "sigla", "motivo": "SSAA = servicios auxiliares: sigla en mayusculas en el ETAP ('UTR SSAA')" },
+    { "buscar": "ssaa", "poner": "SSAA", "columnas": ["G", "J"], "regla": "sigla", "motivo": "idem" },
+    { "buscar": "ok", "poner": "OK", "columnas": ["G", "J"], "regla": "sigla", "motivo": "'Tension Senalizacion OK': OK siempre en mayusculas en la descripcion HMI" },
+    { "buscar": "Ok", "poner": "OK", "columnas": ["G", "J"], "regla": "sigla", "motivo": "idem" }
+  ],
+  "patrones_protegidos": [
+    "\\b\\d{3,}[A-Z]{1,3}\\d{2,}\\b",
+    "\\b\\d{1,2}[A-Z]{1,3}\\d{2}\\b",
+    "\\b[A-Z]{1,3}\\d[-.]\\d+\\b",
+    "\\bQ[CMF]\\d\\b",
+    "\\bTC\\d(?:-\\d+)?\\b"
+  ],
+  "_patrones_protegidos": "Codigos de equipo (229SB04, 2TV04, 25204, QC4, TC3-03): se enmascaran antes de aplicar reglas y se restauran identicos.",
+  "largos": { "C": null, "G": null, "J": 20 },
+  "_largos": "J = DESC. SCADA, maximo 20 (perfil.json). DESC. HMI: sin largo conocido en el ETAP (el mayor mide 70); a confirmar con el cliente (PREGUNTAS.md).",
+  "vocabulario_conocido": [],
+  "presentacion": {
+    "encabezado_pie": true,
+    "pie_pagina": "&P+1 de &N+1"
+  },
+  "referencia": {
+    "hoja": "EPEN",
+    "primera_fila": 6,
+    "archivo": "Ejemplos/ETAP-0722-ET-CT-MC-LI-6209-1-Lista señales - CAO.xlsx"
+  }
+}
