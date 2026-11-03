@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.exe
+build/
+dist/
+config.json
+proyectos/
+versiones/
+registro_operaciones.jsonl
+resultado_pruebas.txt
