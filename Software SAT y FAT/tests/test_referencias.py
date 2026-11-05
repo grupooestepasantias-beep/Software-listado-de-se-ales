@@ -18,6 +18,7 @@ from docx.oxml.ns import qn
 import datos_prueba as D
 import extraer_pdf
 import generador_sat as g
+import ocr_plano
 
 RED = r"\\192.168.15.101\Archivos\PasantiasMM\la paz"
 EF = RED + r"\Ing\ET-LP-0205-ET-CT-PL-EF-1006_rC.pdf"
@@ -221,7 +222,14 @@ class PlanoConHojaResumenDeModulos(unittest.TestCase):
         self.assertIn("S06", {h.codigo for h in self.p})
         self.assertTrue(self.s[0].tupla()[0].startswith("(ver hoja 29"))
 
-    @unittest.skipUnless(__import__('ocr_plano').disponible(), 'sin rapidocr-onnxruntime')\n    def test_termicas_dibujadas_como_lineas_se_leen_por_ocr(self):\n        # La primera vez tarda varios minutos (OCR); después queda en la caché del usuario.\n        q = {t['termica'] for t in extraer_pdf.leer_termicas([ARROYITO])}\n        self.assertEqual(q, {'QCA', 'QCS', 'QC', 'QS', 'QM', 'QPOS', 'QM2', 'Q12', 'Q48.1', 'Q48.2', 'Q48.3'})\n        self.assertTrue(extraer_pdf.TERMICAS_POR_OCR)\n\n    def test_cuenta_los_modulos_del_plano(self):
+    @unittest.skipUnless(ocr_plano.disponible(), "sin rapidocr-onnxruntime")
+    def test_termicas_dibujadas_como_lineas_se_leen_por_ocr(self):
+        # La primera vez tarda varios minutos (OCR); después queda en la caché del usuario.
+        q = {t["termica"] for t in extraer_pdf.leer_termicas([ARROYITO])}
+        self.assertEqual(q, {"QCA", "QCS", "QC", "QS", "QM", "QPOS", "QM2", "Q12", "Q48.1", "Q48.2", "Q48.3"})
+        self.assertTrue(extraer_pdf.TERMICAS_POR_OCR)
+
+    def test_cuenta_los_modulos_del_plano(self):
         self.assertEqual(extraer_pdf.contar_modulos(ARROYITO), (2, 1))
 
     def test_nombres_repetidos_se_completan_a_mano_sin_falso_faltante(self):
