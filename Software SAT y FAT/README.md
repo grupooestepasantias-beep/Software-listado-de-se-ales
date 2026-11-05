@@ -39,7 +39,8 @@ Descargarlo y ejecutarlo; solo hace falta Microsoft Word instalado.
 1. Ejecutar `python app.py` (o `GeneradorSAT.bat`, o el `.exe` si se compiló).
 2. Cargar los **datos**: cliente, nº de obra, obra, ubicación, tipo de tablero, nombre, tensión, fechas (FAT/SAT) y revisión.
 3. Marcar **qué generar**: SAT (incluye sus Anexo 1 y 2) / FAT / Anexo 1 / Anexo 2 del FAT.
-4. **Documentos de referencia**: agregar los PDF (la descripción se deduce del nombre: EF → ESQUEMA FUNCIONAL, TP → CONSTRUCTIVO).
+4. **Planos**: botón *Leer planos (1 o 2 PDF)…* (pestaña Documentos y componentes): se carga un solo PDF funcional que tenga todo, o dos (funcional + constructivo), y se leen térmicas y señales de una vez. Cada anexo conserva además su propio *Subir PDF…*. Si el lector no reconoce el formato del plano no carga nada por suposición y hay que completar las tablas a mano.
+   **Documentos de referencia**: agregar los PDF (la descripción se deduce del nombre: EF → ESQUEMA FUNCIONAL, TP → CONSTRUCTIVO).
 5. **Componentes**: cargar el set típico (RTAC, Power Coupler, módulos DI/DO) o editarlos.
 6. **Anexo 1**: *Subir PDF…* para leer las térmicas. **Anexo 2**: *Subir PDF…* del esquema funcional para leer las
    señales DI y los comandos DO. Revisar siempre las listas (botón *Sugerir descripciones…* completa las térmicas).
@@ -94,6 +95,7 @@ Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del
   valores y normas del ensayo dieléctrico, descripciones/tensión de térmicas que no están en el plano, borne de
   "Falla Alimentación General" (el plano no lo da), SCADA SURVALENT.
 - Ideas de mejora: interfaz sin dependencia de Word, plantillas editables desde la ventana, lectura de más formatos de plano.
+
 
 
 

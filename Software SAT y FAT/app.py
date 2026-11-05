@@ -225,7 +225,8 @@ class App(tk.Tk):
         self.pestanas.add(p1, text="Documentos y componentes")
         marco, self.t_refs = panel_tabla(
             p1, "Documentos de referencia (doble clic para editar)", ("Archivo", "Descripción"), (300, 420),
-            lambda t: [("Agregar archivos…", self._agregar_docs), ("Agregar a mano", t.insertar_vacia),
+            lambda t: [("Leer planos (1 o 2 PDF)…", self._leer_planos), ("Agregar archivos…", self._agregar_docs),
+                       ("Agregar a mano", t.insertar_vacia),
                        ("Recalcular descripción", self._recalcular), ("Quitar", t.quitar),
                        ("Subir", lambda: t.mover(-1)), ("Bajar", lambda: t.mover(1))], alto=5)
         marco.grid(row=0, column=0, sticky="nsew")
@@ -441,20 +442,45 @@ class App(tk.Tk):
     def _confirmar_reemplazo(self, *tablas):
         return not any(t.filas() for t in tablas) or messagebox.askyesno("Subir PDF", "¿Reemplazar la lista actual?")
 
+    def _leer_planos(self):
+        """Un solo lugar para cargar los planos: uno (funcional con todo) o dos (funcional + constructivo).
+        Alimenta documentos de referencia, Anexo 1 (térmicas) y Anexo 2 (señales); los botones de cada anexo siguen disponibles."""
+        if not self._confirmar_reemplazo(self.t_term, self.t_sen, self.t_cmd):
+            return
+        rutas = self._subir_pdf("Planos de ingeniería: elegir 1 PDF (funcional con todo) o 2 (funcional y constructivo)")
+        if not rutas:
+            return
+        existentes = {f[0] for f in self.t_refs.filas()}
+        for r_ in rutas:
+            nombre = os.path.basename(r_)
+            if nombre not in existentes:
+                self.t_refs.agregar((nombre, self._descripcion(nombre)))
+        avisos = self._cargar_termicas(rutas, aviso=False) + self._cargar_senales(rutas, aviso=False)
+        mensaje = (f"Planos leídos: {', '.join(os.path.basename(r) for r in rutas)}.\n"
+                   f"Térmicas: {len(self.t_term.filas())}. Señales: {len(self.t_sen.filas())}. Comandos: {len(self.t_cmd.filas())}.")
+        if not (self.t_sen.filas() or self.t_term.filas()):
+            mensaje += ("\n\nNo se pudo leer ninguna señal ni térmica de estos planos (el lector no reconoce este formato de plano). "
+                        "No se carga nada por suposición: completá las tablas a mano.")
+        if avisos:
+            mensaje += "\n\nRevisar:\n- " + "\n- ".join(dict.fromkeys(avisos))
+        messagebox.showinfo("Leer planos", mensaje)
+
     def _leer_termicas(self):
-        import extraer_pdf
         if not self._confirmar_reemplazo(self.t_term):
             return
         rutas = self._subir_pdf("Anexo 1: elegir PDF de planos (topográfico y/o funcional)")
-        if not rutas:
-            return
+        if rutas:
+            self._cargar_termicas(rutas)
+
+    def _cargar_termicas(self, rutas, aviso=True):
+        import extraer_pdf
         self.config(cursor="watch")
         self.update()
         try:
             termicas = extraer_pdf.extraer_termicas(*rutas)
         except Exception as e:
             messagebox.showerror("Error al leer los PDF", str(e))
-            return
+            return ["No se pudieron leer las térmicas: " + str(e)]
         finally:
             self.config(cursor="")
         # El plano da la térmica (y a veces la tensión); el grupo y la descripción se completan con las
@@ -463,18 +489,25 @@ class App(tk.Tk):
         self.pdf_anexo["A1"] = rutas
         self.lbl_an1.config(text="Leído de: " + ", ".join(os.path.basename(r) for r in rutas)
                             + ". Grupo y descripción: valores habituales de los protocolos de referencia; revisarlos.")
+        avisos = []
         if not termicas:
-            messagebox.showinfo("Subir PDF", "No se encontraron térmicas (-Q…) en el PDF. Cargarlas a mano.")
+            avisos.append("No se encontraron térmicas (-Q…) en el PDF. Cargarlas a mano.")
         elif any(not g_.strip() or not d.strip() for g_, d, _ in self.t_term.filas()):
-            messagebox.showinfo("Subir PDF", "Hay térmicas sin descripción o grupo conocido: completalas en la tabla.")
+            avisos.append("Hay térmicas sin descripción o grupo conocido: completalas en la tabla.")
+        if aviso:
+            for a in avisos:
+                messagebox.showinfo("Subir PDF", a)
+        return avisos
 
     def _leer_senales(self):
-        import extraer_pdf
         if not self._confirmar_reemplazo(self.t_sen, self.t_cmd):
             return
         rutas = self._subir_pdf("Anexo 2: elegir el PDF del esquema funcional (EF)")
-        if not rutas:
-            return
+        if rutas:
+            self._cargar_senales(rutas)
+
+    def _cargar_senales(self, rutas, aviso=True):
+        import extraer_pdf
         self.config(cursor="watch")
         self.update()
         try:
@@ -486,7 +519,7 @@ class App(tk.Tk):
                 avisos += a
         except Exception as e:
             messagebox.showerror("Error al leer el PDF", str(e))
-            return
+            return ["No se pudieron leer las señales: " + str(e)]
         finally:
             self.config(cursor="")
         self.t_sen.cargar(senales)
@@ -497,10 +530,12 @@ class App(tk.Tk):
         self.t_comp.cargar(otros + [("MÓDULO DI SEL 2244-2", "")] * di + [("MÓDULO DO SEL 2244-3", "")] * do)
         self.pdf_anexo["A2"] = rutas
         self.lbl_an2.config(text="Leído de: " + ", ".join(os.path.basename(r) for r in rutas))
-        mensaje = f"Se leyeron {len(senales)} señales y {len(comandos)} comandos."
-        if avisos:
-            mensaje += "\n\nRevisar:\n- " + "\n- ".join(avisos)
-        messagebox.showinfo("Leer del PDF", mensaje)
+        if aviso:
+            mensaje = f"Se leyeron {len(senales)} señales y {len(comandos)} comandos."
+            if avisos:
+                mensaje += "\n\nRevisar:\n- " + "\n- ".join(avisos)
+            messagebox.showinfo("Leer del PDF", mensaje)
+        return avisos
 
     # ---------- generación ----------
     def _datos(self):
