@@ -217,10 +217,21 @@ class PlanoConHojaResumenDeModulos(unittest.TestCase):
         self.assertIn("Interruptor 252-03 Abierto", nombres)
         self.assertEqual(nombres.count("Disparo General"), 2)
 
-    def test_el_elemento_no_se_inventa_y_se_avisa(self):
-        self.assertTrue(all(not x.borne for x in self.s + self.c))
+    def test_los_elementos_leidos_por_ocr_son_los_del_plano_y_el_resto_queda_sin_borne(self):
         self.assertIn("S06", {h.codigo for h in self.p})
-        self.assertTrue(self.s[0].tupla()[0].startswith("(ver hoja 29"))
+        if not ocr_plano.disponible():
+            self.assertTrue(all(not x.borne for x in self.s + self.c))
+            return
+        con = {x.nombre + str(x.terminal): x.borne for x in self.s if x.borne}
+        self.assertGreaterEqual(len(con), 15)
+        self.assertTrue(all(re.fullmatch(r"-(KI\d+\.\d|Q[A-Z0-9]+)", b) for b in con.values()), con)
+        self.assertEqual(self.s[0].borne, "-KI3.3")  # Interruptor 252-03 Abierto (hoja 12)
+        self.assertEqual(next(x.borne for x in self.s if x.nombre == "Interruptor 252-02 Abierto"), "-KI3.2")
+        # "Resorte descargado" figura en las hojas de ambas celdas: cada una va a su terminal, sin cruzarse
+        self.assertEqual({x.terminal: x.borne for x in self.s if x.nombre.startswith("Resorte")}, {3: "-KI6.3", 13: "-KI6.2"})
+        sin = [x for x in self.s if not x.borne]
+        self.assertTrue(sin and all(x.tupla()[0].startswith("(ver hoja 29") for x in sin))
+        self.assertTrue(all(not x.borne for x in self.c))  # los comandos no se leen: a mano
 
     @unittest.skipUnless(ocr_plano.disponible(), "sin rapidocr-onnxruntime")
     def test_termicas_dibujadas_como_lineas_se_leen_por_ocr(self):
@@ -233,7 +244,8 @@ class PlanoConHojaResumenDeModulos(unittest.TestCase):
         self.assertEqual(extraer_pdf.contar_modulos(ARROYITO), (2, 1))
 
     def test_nombres_repetidos_se_completan_a_mano_sin_falso_faltante(self):
-        manual = [(f"-K{i}", x.nombre) for i, x in enumerate(self.s)]  # bornes de prueba, no son datos reales
+        # el resto de los bornes son de prueba, no datos reales
+        manual = [(x.borne or f"-K{i}", x.nombre) for i, x in enumerate(self.s)]
         hs = extraer_pdf.comparar_con_pdf(manual, self.s, "Señales")
         self.assertEqual([h.codigo for h in hs if h.gravedad == "BLOQUEANTE"], [])
 

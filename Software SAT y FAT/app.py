@@ -555,7 +555,7 @@ class App(tk.Tk):
         try:
             senales, comandos, avisos = [], [], []
             for ruta in rutas:
-                s, c, a = extraer_pdf.extraer_senales(ruta)
+                s, c, a = self._con_avance("Leyendo señales y comandos del plano", lambda r=ruta: extraer_pdf.extraer_senales(r))
                 senales += s
                 comandos += c
                 avisos += a

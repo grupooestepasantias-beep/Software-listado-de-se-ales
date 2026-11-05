@@ -157,6 +157,7 @@ def _h(codigo, gravedad, ruta, pagina, desc, sol="", tipo=DOCUMENTAL, confirmabl
 # Este formato no trae las hojas "DETALLE MODULO DI/DO" ni bornes -XFI: una hoja dibuja cada módulo con el nombre de la
 # señal de cada terminal. El elemento de cada entrada (-KI3.2…) está dibujado como líneas, no como texto, así que NO se
 # puede leer del PDF: queda sin borne y el usuario lo completa a mano (se registra como dato manual).
+ELEMENTOS_POR_OCR = set()  # señales cuyo elemento se leyó por OCR (hay que confirmarlas)
 _NO_SENAL = re.compile(r"^(reserva|com[uú]n|positivo|negativo)\b", re.I)
 
 
@@ -207,12 +208,42 @@ def _leer_hoja_de_modulos(doc, ruta):
                 (comandos if tipo == "DO" else senales).append(s)
     if not hojas:
         return None
+    asignados = _asignar_elementos(ruta, senales)
+    pendientes = sum(1 for s in senales + comandos if not s.borne)
     problemas = [_h("S06", ADVERTENCIA, ruta, hojas[0],
-                    "Este plano no trae los bornes/elementos (-KI3.2…) como texto: están dibujados como líneas y el programa no "
-                    "los puede leer. Los nombres de señales sí se leyeron de la hoja de módulos; el elemento de cada señal "
-                    "hay que completarlo a mano desde las hojas de cableado.",
+                    "Este plano no trae los bornes/elementos (-KI3.2…) como texto: están dibujados como líneas. "
+                    f"Se leyeron por OCR {asignados} de {len(senales)} entradas (verificarlos contra el plano); "
+                    f"{pendientes} señales/comandos quedan sin elemento y hay que completarlos a mano desde las hojas de cableado.",
                     "Completar la columna 'Borne / Elemento' en el Anexo 2.")]
     return senales, comandos, problemas
+
+
+def _normalizar_nombre(t):
+    return re.sub(r"[^a-z0-9]", "", _sin_acentos(t).casefold())
+
+
+def _asignar_elementos(ruta, senales):
+    """Completa el elemento de las entradas con lo que el OCR leyó en las hojas 'ENTRADAS DIGITALES' (por nombre de señal)."""
+    import difflib
+    import ocr_plano
+    ELEMENTOS_POR_OCR.clear()
+    if not ocr_plano.disponible():
+        return 0
+    asignados, ultimo = 0, -1
+    for nombre, elemento, hoja in ocr_plano.elementos_de_entradas(ruta, PROGRESO_OCR):
+        n = _normalizar_nombre(nombre)
+        # Las hojas de cableado siguen el orden de los terminales: se busca la primera señal parecida DESPUÉS de la
+        # anterior (así "Resorte descargado" de la hoja 12 no se asigna a la señal del mismo nombre de otro interruptor)
+        for i in range(ultimo + 1, len(senales)):
+            s = senales[i]
+            if not s.borne and difflib.SequenceMatcher(None, n, _normalizar_nombre(s.nombre)).ratio() >= 0.88:
+                s.borne = elemento
+                s.pagina_cableado = hoja
+                ELEMENTOS_POR_OCR.add(s.nombre)
+                asignados += 1
+                ultimo = i
+                break
+    return asignados
 
 
 # ------------------------------------------------------------------ señales y comandos
@@ -327,22 +358,25 @@ def leer_termicas(rutas):
     if not encontradas:  # planos con los nombres dibujados como líneas: se leen por OCR (lento, queda en caché)
         import ocr_plano
         for ruta in rutas:
-            for q, paginas in ocr_plano.termicas_en_hojas(ruta, PROGRESO_OCR).items():
+            for q, dato in ocr_plano.termicas_en_hojas(ruta, PROGRESO_OCR).items():
                 e = encontradas.setdefault(q, {"termica": q, "paginas": [], "tensiones": set()})
-                e["paginas"] += [(os.path.basename(ruta), n) for n in paginas]
+                e["paginas"] += [(os.path.basename(ruta), n) for n in dato["paginas"]]
+                e["descripcion"] = dato["descripcion"]
+                if dato["tension"]:
+                    e["tensiones"].add(dato["tension"])
                 TERMICAS_POR_OCR.add(q)
     orden = sorted(encontradas, key=lambda q: (ORDEN_TERMICAS.index(q) if q in ORDEN_TERMICAS else 99, q))
     salida = []
     for q in orden:
         e = encontradas[q]
-        salida.append({"termica": q, "paginas": e["paginas"],
+        salida.append({"termica": q, "paginas": e["paginas"], "descripcion": e.get("descripcion", ""),
                        "tension": next(iter(e["tensiones"])) if len(e["tensiones"]) == 1 else ""})
     return salida
 
 
 def filas_termicas(rutas):
     """Filas para la tabla del Anexo 1: (tensión, descripción, térmica). Lo que el plano no dice queda vacío."""
-    return [(t["tension"], "", t["termica"]) for t in leer_termicas(rutas)]
+    return [(t["tension"], t["descripcion"], t["termica"]) for t in leer_termicas(rutas)]
 
 
 def aplicar_sugerencias(filas):
