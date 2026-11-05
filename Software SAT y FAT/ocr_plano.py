@@ -205,6 +205,9 @@ def _elemento(texto_):
     m = re.fullmatch(r"[-I1l]?(Q[A-Z0-9]{1,3}(?:\.\d)?)", t)
     if m:
         return "-" + m.group(1)
+    m = re.fullmatch(r"-?(PW\d+)", t)  # fuente de alimentación
+    if m:
+        return "-" + m.group(1)
     m = re.fullmatch(r"-?K([A-HJ-Z])(\d+)\.(\d+)", t)
     if m:
         return f"-K{m.group(1)}{m.group(2)}.{m.group(3)}"
