@@ -224,7 +224,7 @@ class PlanoConHojaResumenDeModulos(unittest.TestCase):
             return
         con = {x.nombre + str(x.terminal): x.borne for x in self.s if x.borne}
         self.assertGreaterEqual(len(con), 15)
-        self.assertTrue(all(re.fullmatch(r"-(KI\d+\.\d|Q[A-Z0-9]+|XFI/\d)", b) for b in con.values()), con)
+        self.assertTrue(all(re.fullmatch(r"-(KI\d+\.\d|Q[A-Z0-9]+|XFI/\d|PW\d)", b) for b in con.values()), con)
         self.assertEqual(self.s[0].borne, "-KI3.3")  # Interruptor 252-03 Abierto (hoja 12)
         self.assertEqual(next(x.borne for x in self.s if x.nombre == "Interruptor 252-02 Abierto"), "-KI3.2")
         # "Resorte descargado" figura en las hojas de ambas celdas: cada una va a su terminal, sin cruzarse
