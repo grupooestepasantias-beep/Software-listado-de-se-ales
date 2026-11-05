@@ -37,7 +37,7 @@ PLANTILLAS = {
     "FAT_ANEXO2": "plantilla_fat_anexo2.docx",
 }
 PLANTILLA = os.path.join(carpeta_programa(), PLANTILLAS["SAT"])
-CANONICOS = ("SAT", "FAT", "FAT_A1", "FAT_A2")  # el SAT es un solo archivo, sin anexos
+CANONICOS = ("SAT", "SAT_A1", "SAT_A2", "FAT", "FAT_A1", "FAT_A2")
 
 
 def ruta_plantilla(clave):

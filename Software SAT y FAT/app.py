@@ -28,7 +28,7 @@ CAMPOS = [  # clave, etiqueta, valor por defecto, opciones (None = campo de text
     ("FECHA", "Fecha (dd/mm/aaaa)", "", None),
     ("REVISION", "Revisión", "A", None),
 ]
-DOCUMENTOS = [("SAT", "Protocolo SAT (un solo archivo)"), ("FAT", "Protocolo FAT"), ("A1", "FAT Anexo 1 (energizado)"),
+DOCUMENTOS = [("SAT", "Protocolo SAT (con sus anexos)"), ("FAT", "Protocolo FAT"), ("A1", "FAT Anexo 1 (energizado)"),
               ("A2", "FAT Anexo 2 (señales)")]
 PRESETS = [("Solo SAT", ("SAT",)), ("FAT completo", ("FAT", "A1", "A2")),
            ("Paquete completo", ("SAT", "FAT", "A1", "A2"))]
@@ -305,7 +305,10 @@ class App(tk.Tk):
             v.set(k in claves)
 
     def _seleccion(self):
-        return g.normalizar_incluir([k for k, _ in DOCUMENTOS if self.incluir[k].get()])
+        marcadas = [k for k, _ in DOCUMENTOS if self.incluir[k].get()]
+        if "SAT" in marcadas:
+            marcadas += ["SAT_A1", "SAT_A2"]
+        return g.normalizar_incluir(marcadas)
 
     # ---------- proyecto ----------
     def _estado_proyecto(self):

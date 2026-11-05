@@ -750,8 +750,6 @@ def _consistencia_paquete(docs):
                                f"El listado de señales difiere del de {a2[0].nombre}.", "Regenerar ambos anexos con el mismo plano."))
     tipos = {d.tipo for d in docs}
     for d in principales:
-        if d.tipo == "SAT":  # el SAT es un solo archivo: solo menciona los anexos, que no se generan para él
-            continue
         mencionados = {m for t, _, _ in d.parrafos for m in re.findall(r"Anexo\s+(\d)", t)}
         for n in sorted(mencionados):
             if f"{d.tipo}_A{n}" not in tipos:

@@ -128,8 +128,8 @@ class PaqueteReal(unittest.TestCase):
         self.assertEqual(self.r["estado"], "LISTO PARA ENTREGAR", self.r["informe"].a_texto())
 
     def test_seis_word_seis_pdf_y_zip_con_todo(self):
-        self.assertEqual(len(self.r["archivos"]), 4)  # SAT (un solo archivo) + FAT con sus 2 anexos
-        self.assertEqual(len(self.r["pdfs"]), 4)
+        self.assertEqual(len(self.r["archivos"]), 6)
+        self.assertEqual(len(self.r["pdfs"]), 6)
         nombres = set(zipfile.ZipFile(self.r["zip"]).namelist())
         for a in self.r["archivos"] + self.r["pdfs"] + [self.r["trazabilidad"]]:
             self.assertIn(os.path.basename(a), nombres)
@@ -139,7 +139,7 @@ class PaqueteReal(unittest.TestCase):
         for a in self.r["archivos"]:
             n = os.path.basename(a)
             self.assertTrue(n.startswith("EDESTE - Obra 205 - Tablero de Control La Paz - Protocolo "), n)
-            self.assertRegex(n, r"Protocolo (SAT - rA|FAT - rA( - Anexo [12])?)\.docx$")
+            self.assertRegex(n, r"Protocolo (SAT|FAT) - rA( - Anexo [12])?\.docx$")
 
     def test_sat_y_fat_son_independientes_y_cada_uno_lleva_su_fecha(self):
         for a in self.r["archivos"]:
@@ -159,7 +159,7 @@ class PaqueteReal(unittest.TestCase):
         self.assertEqual(len(cmd), 28)
 
     def test_anexo_1_es_un_procedimiento_ordenado(self):
-        d = validador.Doc(next(a for a in self.r["archivos"] if a.endswith("Protocolo FAT - rA - Anexo 1.docx")))
+        d = validador.Doc(next(a for a in self.r["archivos"] if a.endswith("Protocolo SAT - rA - Anexo 1.docx")))
         filas = validador._filas(d.tabla("energizado"))
         self.assertEqual(filas[0], ["Paso", "Circuito (térmica)", "Tensión esperada", "Tensión medida",
                                     "Indicaciones observadas", "Resultado"])

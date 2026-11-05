@@ -51,11 +51,11 @@ def abrir(clave):
 
 class PaqueteCompleto(unittest.TestCase):
     def test_se_generan_los_cuatro_documentos(self):
-        self.assertEqual(len(PAQUETE["rutas"]), 4)
+        self.assertEqual(len(PAQUETE["rutas"]), 6)
         for ruta in PAQUETE["rutas"].values():
             self.assertTrue(os.path.getsize(ruta) > 20000, ruta)
         nombres = sorted(os.path.basename(r) for r in PAQUETE["rutas"].values())
-        esperados = sorted(g.nombre_salida(D.DATOS, f, a) for f, a in (("SAT", None), ("FAT", None), ("FAT", 1), ("FAT", 2)))
+        esperados = sorted(g.nombre_salida(D.DATOS, f, a) for f in ("SAT", "FAT") for a in (None, 1, 2))
         self.assertEqual(nombres, esperados)
         self.assertIn("CLIENTE PRUEBA - Obra 000 - Tablero de Control Estación Prueba - Protocolo FAT - rA.docx", esperados)
 

@@ -9,7 +9,8 @@ a partir de los planos de ingeniería (PDF) y de los datos que carga el usuario.
 
 | Documento | Archivo | Contenido |
 |---|---|---|
-| SAT | `<Cliente> - Obra <N> - <Tablero> - Protocolo SAT - r<Rev>.docx` | Un solo archivo, **sin anexos** (solo los menciona) |
+| SAT | `<Cliente> - Obra <N> - <Tablero> - Protocolo SAT - r<Rev>.docx` | Protocolo principal |
+| SAT Anexo 1 / Anexo 2 | `... - Protocolo SAT - r<Rev> - Anexo 1.docx` / `... Anexo 2.docx` | Energizado y señales/comandos, como archivos aparte |
 | FAT | `... - Protocolo FAT - r<Rev>.docx` | Protocolo principal |
 | FAT Anexo 1 | `... - Protocolo FAT - r<Rev> - Anexo 1.docx` | Procedimiento de energizado (térmicas -Q…) |
 | FAT Anexo 2 | `... - Protocolo FAT - r<Rev> - Anexo 2.docx` | Señales DI y comandos DO (tablas) |
@@ -37,7 +38,7 @@ Descargarlo y ejecutarlo; solo hace falta Microsoft Word instalado.
 ## Cómo usarlo
 1. Ejecutar `python app.py` (o `GeneradorSAT.bat`, o el `.exe` si se compiló).
 2. Cargar los **datos**: cliente, nº de obra, obra, ubicación, tipo de tablero, nombre, tensión, fechas (FAT/SAT) y revisión.
-3. Marcar **qué generar** (SAT / FAT / Anexo 1 / Anexo 2).
+3. Marcar **qué generar**: SAT (incluye sus Anexo 1 y 2) / FAT / Anexo 1 / Anexo 2 del FAT.
 4. **Documentos de referencia**: agregar los PDF (la descripción se deduce del nombre: EF → ESQUEMA FUNCIONAL, TP → CONSTRUCTIVO).
 5. **Componentes**: cargar el set típico (RTAC, Power Coupler, módulos DI/DO) o editarlos.
 6. **Anexo 1**: *Subir PDF…* para leer las térmicas. **Anexo 2**: *Subir PDF…* del esquema funcional para leer las
@@ -88,10 +89,12 @@ python -m PyInstaller --noconfirm --onefile --windowed --name GeneradorSAT ^
 Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del .exe. El .exe se publica en Releases, no dentro del código.
 
 ## Estado y pendientes
-- Funciona: SAT (1 archivo) + FAT con Anexos 1 y 2, PDF, ZIP, trazabilidad, control de calidad, versiones.
+- Funciona: SAT y FAT, cada uno con Anexo 1 y Anexo 2 (6 Word), PDF, ZIP, trazabilidad, control de calidad, versiones.
 - Pendientes de ingeniería (confirmar con el responsable, no son errores de código): modelos de equipos (SEL 2241/2243/2244),
   valores y normas del ensayo dieléctrico, descripciones/tensión de térmicas que no están en el plano, borne de
   "Falla Alimentación General" (el plano no lo da), SCADA SURVALENT.
 - Ideas de mejora: interfaz sin dependencia de Word, plantillas editables desde la ventana, lectura de más formatos de plano.
+
+
 
 
