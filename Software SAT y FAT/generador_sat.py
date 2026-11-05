@@ -449,7 +449,11 @@ def revisar_previos(datos, documentos, componentes, termicas, senales, comandos,
             plano = {t["termica"]: t for t in extraer_pdf.leer_termicas(rutas)}
             tabla = {q.lstrip("-"): grupo for grupo, _, q in termicas if q.strip()}
             for q in tabla:
-                if q not in plano:
+                if not plano:  # el plano no trae ninguna térmica como texto: no se puede contrastar, queda como dato manual
+                    hs.append(validador.Hallazgo("R23", validador.INFO, validador.DOCUMENTAL, "Anexo 1", q,
+                                                 f"La térmica -{q} se ingresó a mano: los planos cargados no traen térmicas "
+                                                 "como texto y no se pueden contrastar.", "Dato manual registrado en el informe."))
+                elif q not in plano:
                     hs.append(validador.Hallazgo("R20", validador.BLOQUEANTE, validador.CONSISTENCIA, "Anexo 1", q,
                                                  f"La térmica -{q} no figura en los planos cargados (dato sin respaldo).",
                                                  "Quitarla o cargar el plano que la contiene."))

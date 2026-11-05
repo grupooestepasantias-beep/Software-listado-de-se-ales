@@ -153,6 +153,68 @@ def _h(codigo, gravedad, ruta, pagina, desc, sol="", tipo=DOCUMENTAL, confirmabl
     return h
 
 
+# ------------------------------------------------------------------ plano con una hoja resumen de módulos (p. ej. EDESTE/Arroyito)
+# Este formato no trae las hojas "DETALLE MODULO DI/DO" ni bornes -XFI: una hoja dibuja cada módulo con el nombre de la
+# señal de cada terminal. El elemento de cada entrada (-KI3.2…) está dibujado como líneas, no como texto, así que NO se
+# puede leer del PDF: queda sin borne y el usuario lo completa a mano (se registra como dato manual).
+_NO_SENAL = re.compile(r"^(reserva|com[uú]n|positivo|negativo)\b", re.I)
+
+
+def _columnas_de_modulos(pagina):
+    """[(tipo, [(terminal, nombre o '')])] de una hoja resumen: una columna de texto por módulo, de izquierda a derecha."""
+    m = pagina.rotation_matrix
+    lineas = []
+    for b in pagina.get_text("dict")["blocks"]:
+        for l in b.get("lines", []):
+            texto = " ".join("".join(s["text"] for s in l["spans"]).split())
+            r = pymupdf.Rect(l["bbox"]) * m
+            if texto and 100 < r.y0 < 750 and 200 < r.x0 < 1140:
+                lineas.append((r.x0, r.y0, texto))
+    if sum(bool(_NO_SENAL.match(t)) for _, _, t in lineas) < 6:
+        return []
+    columnas = []
+    for x, y, t in sorted(lineas):
+        if columnas and x - columnas[-1][-1][0] < 40:
+            columnas[-1].append((x, y, t))
+        else:
+            columnas.append([(x, y, t)])
+    salida = []
+    for col in columnas:
+        if len(col) < 6:
+            continue
+        textos = [t for _, _, t in sorted(col, key=lambda c: c[1])]
+        es_do = sum(t.lower().startswith("positivo") for t in textos) >= 4
+        salida.append(("DO" if es_do else "DI", list(enumerate(textos, start=1))))
+    return salida
+
+
+def _leer_hoja_de_modulos(doc, ruta):
+    """(senales, comandos, problemas) de un plano con hoja resumen de módulos, o None si no tiene ese formato."""
+    archivo = os.path.basename(ruta)
+    senales, comandos, hojas = [], [], []
+    for pagina in doc:
+        modulos = _columnas_de_modulos(pagina)
+        if not modulos:
+            continue
+        hojas.append(pagina.number + 1)
+        for orden, (tipo, terminales) in enumerate(modulos, start=1):
+            modulo = f"módulo {orden}"
+            for t, nombre in terminales:
+                if _NO_SENAL.match(nombre):
+                    continue
+                s = Senal("", nombre, tipo, modulo, t, f"hoja {pagina.number + 1}, {modulo}, terminal {t}",
+                          pagina.number + 1, 0, archivo)
+                (comandos if tipo == "DO" else senales).append(s)
+    if not hojas:
+        return None
+    problemas = [_h("S06", ADVERTENCIA, ruta, hojas[0],
+                    "Este plano no trae los bornes/elementos (-KI3.2…) como texto: están dibujados como líneas y el programa no "
+                    "los puede leer. Los nombres de señales sí se leyeron de la hoja de módulos; el elemento de cada señal "
+                    "hay que completarlo a mano desde las hojas de cableado.",
+                    "Completar la columna 'Borne / Elemento' en el Anexo 2.")]
+    return senales, comandos, problemas
+
+
 # ------------------------------------------------------------------ señales y comandos
 def leer_funcional(ruta):
     """Lee el esquema funcional. Devuelve (senales, comandos, problemas).
@@ -184,6 +246,11 @@ def leer_funcional(ruta):
 
     secciones = [s for s in secciones if s["di"] or s["do"]]
     problemas, senales, comandos = [], [], []
+    if not grupos:
+        resultado = _leer_hoja_de_modulos(doc, ruta)
+        if resultado is not None:
+            _CACHE[("funcional",) + k] = resultado
+            return resultado
     if not grupos:
         problemas.append(_h("S00", BLOQUEANTE, ruta, 0, "El PDF no tiene páginas 'DETALLE MODULO DI/DO': no parece un "
                             "esquema funcional con el formato esperado.", "Cargar el esquema funcional correcto."))
@@ -246,7 +313,7 @@ def leer_termicas(rutas):
     for ruta in rutas:
         for pagina in _abrir(ruta):
             texto = pagina.get_text()
-            codigos = set(re.findall(r"-(Q(?:\d+|S))\b", texto))
+            codigos = set(re.findall(r"-(Q(?:\d+|[A-Z]))\b", texto))
             tensiones = {f"{m[0]} {m[1].upper()}" for m in re.findall(r"\b(\d{2,3})\s?(VCC|VCA|Vcc|Vca)\b", texto)}
             for q in codigos:
                 e = encontradas.setdefault(q, {"termica": q, "paginas": [], "tensiones": set()})
@@ -398,7 +465,10 @@ def comparar_con_pdf(actual, del_plano, que):
     base = {}
     for s in del_plano:
         base.setdefault(s.borne or f"(ver {s.referencia})" if not s.borne else s.borne, []).append(s)
-    sin_borne = {s.nombre: s for s in del_plano if not s.borne}
+    sin_borne = {}  # varias señales del plano pueden tener el mismo nombre (p. ej. dos "Disparo General")
+    for s in del_plano:
+        if not s.borne:
+            sin_borne.setdefault(s.nombre, []).append(s)
     usados = set()
     for borne, nombre in actual:
         if borne in base and borne and not borne.startswith("("):
@@ -409,8 +479,8 @@ def comparar_con_pdf(actual, del_plano, que):
             hs.append(Hallazgo("R10", BLOQUEANTE, CONSISTENCIA, "Anexo 2", que,
                                f"{borne}: la tabla dice '{nombre}' y el plano dice '{nombres[0]}'.",
                                "Los nombres deben coincidir exactamente con la ingeniería."))
-        elif nombre in sin_borne and (not borne or borne.startswith("(") or borne not in base):
-            s = sin_borne[nombre]
+        elif sin_borne.get(nombre) and (not borne or borne.startswith("(") or borne not in base):
+            s = sin_borne[nombre].pop(0)
             usados.add((s.borne or f"(ver {s.referencia})", nombre))
             if borne and not borne.startswith("("):
                 hs.append(Hallazgo("R12", INFO, DOCUMENTAL, "Anexo 2", que,
@@ -439,6 +509,11 @@ def contar_modulos(ruta):
         for pagina in _abrir(ruta):
             if _titulo(pagina) == "DETALLE MODULO DI":
                 for _, tipo, _t in _modulos(pagina):
+                    di += tipo == "DI"
+                    do += tipo == "DO"
+        if not (di or do):  # planos con hoja resumen de módulos
+            for pagina in _abrir(ruta):
+                for tipo, _t in _columnas_de_modulos(pagina):
                     di += tipo == "DI"
                     do += tipo == "DO"
         _CACHE[("modulos",) + k] = (di, do)

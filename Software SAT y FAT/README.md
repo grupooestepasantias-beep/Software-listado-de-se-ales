@@ -89,12 +89,17 @@ python -m PyInstaller --noconfirm --onefile --windowed --name GeneradorSAT ^
 ```
 Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del .exe. El .exe se publica en Releases, no dentro del código.
 
+## Formatos de plano soportados
+- **La Paz (EF + TP):** hojas DETALLE MODULO DI/DO y cableado con bornes -XFI/-XF: señales, comandos, bornes y térmicas se leen completos.
+- **Hoja resumen de módulos (EDESTE/Arroyito, USRE-01-19-…-Ef-1102):** los nombres de señales y comandos se leen de la hoja de módulos (terminal por terminal, sin reservas ni comunes). El *elemento* de cada señal (-KI3.2…) y las térmicas (-QC, -QS) están dibujados como líneas en el PDF y no se pueden leer: se completan a mano y quedan registrados como dato manual. Para leerlos automáticamente habría que exportar el PDF con el texto como texto (no como geometría).
+
 ## Estado y pendientes
 - Funciona: SAT y FAT, cada uno con Anexo 1 y Anexo 2 (6 Word), PDF, ZIP, trazabilidad, control de calidad, versiones.
 - Pendientes de ingeniería (confirmar con el responsable, no son errores de código): modelos de equipos (SEL 2241/2243/2244),
   valores y normas del ensayo dieléctrico, descripciones/tensión de térmicas que no están en el plano, borne de
   "Falla Alimentación General" (el plano no lo da), SCADA SURVALENT.
 - Ideas de mejora: interfaz sin dependencia de Word, plantillas editables desde la ventana, lectura de más formatos de plano.
+
 
 
 

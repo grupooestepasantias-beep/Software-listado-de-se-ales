@@ -198,5 +198,37 @@ class ContraNuevaCalifornia(unittest.TestCase):
         self.assertIn("protocolo de ensayos en sitio", nuestro_txt)
 
 
+ARROYITO = r"\\192.168.15.101\Archivos\PasantiasMM\EDESTE\Funcional\USRE-01-19-ET-El-PL-Ef-1102_r2.pdf"
+
+
+@unittest.skipUnless(hay(ARROYITO), "no hay acceso al plano funcional de EDESTE/Arroyito")
+class PlanoConHojaResumenDeModulos(unittest.TestCase):
+    """Formato sin hojas DETALLE MODULO ni bornes -XFI: los nombres salen de la hoja de módulos, el elemento no se lee."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.s, cls.c, cls.p = extraer_pdf.leer_funcional(ARROYITO)
+
+    def test_lee_nombres_de_senales_y_comandos_sin_reservas_ni_comunes(self):
+        self.assertEqual((len(self.s), len(self.c)), (32, 4))
+        nombres = [x.nombre for x in self.s + self.c]
+        self.assertFalse([n for n in nombres if re.match(r"(?i)(reserva|com[uú]n|positivo)", n)])
+        self.assertIn("Interruptor 252-03 Abierto", nombres)
+        self.assertEqual(nombres.count("Disparo General"), 2)
+
+    def test_el_elemento_no_se_inventa_y_se_avisa(self):
+        self.assertTrue(all(not x.borne for x in self.s + self.c))
+        self.assertIn("S06", {h.codigo for h in self.p})
+        self.assertTrue(self.s[0].tupla()[0].startswith("(ver hoja 29"))
+
+    def test_cuenta_los_modulos_del_plano(self):
+        self.assertEqual(extraer_pdf.contar_modulos(ARROYITO), (2, 1))
+
+    def test_nombres_repetidos_se_completan_a_mano_sin_falso_faltante(self):
+        manual = [(f"-K{i}", x.nombre) for i, x in enumerate(self.s)]  # bornes de prueba, no son datos reales
+        hs = extraer_pdf.comparar_con_pdf(manual, self.s, "Señales")
+        self.assertEqual([h.codigo for h in hs if h.gravedad == "BLOQUEANTE"], [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
