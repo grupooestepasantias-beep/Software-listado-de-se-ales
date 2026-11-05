@@ -202,7 +202,7 @@ def termicas_en_hojas(ruta, progreso=None):
 def _elemento(texto_):
     """Nombre normalizado del elemento (contacto de relé o térmica) o ''. El OCR lee la I de -KI3.2 como 1 o l."""
     t = texto_.strip().replace(" ", "")
-    m = re.fullmatch(r"[-I]?(Q[A-Z0-9]{1,3}(?:\.\d)?)", t)
+    m = re.fullmatch(r"[-I1l]?(Q[A-Z0-9]{1,3}(?:\.\d)?)", t)
     if m:
         return "-" + m.group(1)
     m = re.fullmatch(r"-?K([A-HJ-Z])(\d+)\.(\d+)", t)
@@ -212,18 +212,31 @@ def _elemento(texto_):
     return f"-KI{m.group(1)}.{m.group(2)}" if m else ""
 
 
+def _es_titulo_de_entradas(texto_):
+    """'ENTRADAS DIGITALES' (el OCR lo lee a veces cortado: 'SDIGITALES'); 'SALIDAS DIGITALES' no cuenta."""
+    t = re.sub(r"\s+", "", texto_).upper()
+    return "DIGITALES" in t and not re.search(r"SALIDAS?DIGITALES", t)
+
+
 def _leer_hoja_de_entradas(img):
     """OCR de la hoja completa + una relectura ampliada de la franja de los elementos (texto chico, el OCR lo pierde)."""
     import cv2
     import numpy as np
     lecturas = [[t, c, list(caja)] for t, c, caja in _leer(img)]
-    titulo = next((caja for t, c, caja in lecturas if c >= 0.7 and "ENTRADASDIGITALES" in re.sub(r"\s+", "", t).upper()), None)
+    titulo = next((caja for t, c, caja in lecturas if c >= 0.7 and _es_titulo_de_entradas(t)), None)
     if titulo:
         y0 = int(titulo[1]) + 400
         banda = img[y0:y0 + 700]
         grande = cv2.resize(banda, None, fx=AMPLIACION, fy=AMPLIACION, interpolation=cv2.INTER_CUBIC)
         for t, c, (a0, b0, a1, b1) in _leer(np.ascontiguousarray(grande)):
             lecturas.append([t, c, [a0 / AMPLIACION, b0 / AMPLIACION + y0, a1 / AMPLIACION, b1 / AMPLIACION + y0]])
+    for t, c, (a0, b0, a1, b1) in list(lecturas):  # números de borne (1, 2, 3…) sobre los puntos de la bornera "-XFI"
+        if re.fullmatch(r"-?XFI\d*", t.replace(" ", "")) and c >= 0.7:
+            y0, x0 = max(0, int(b0) - 90), int(a1)
+            zona = img[y0:int(b1) + 40, x0:]
+            grande = cv2.resize(zona, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+            for t2, c2, (d0, e0, d1, e1) in _leer(np.ascontiguousarray(grande)):
+                lecturas.append([t2, c2, [x0 + d0 / 3, y0 + e0 / 3, x0 + d1 / 3, y0 + e1 / 3]])
     return lecturas
 
 
@@ -236,7 +249,7 @@ def _hojas_de_entradas(ruta, progreso):
         if progreso:
             progreso(f"Buscando las hojas de entradas digitales ({pagina.number + 1} de {n})…", 0.5 * pagina.number / n)
         img = _imagen(pagina, 250)
-        if any("ENTRADASDIGITALES" in re.sub(r"\s+", "", t).upper() for t, c, _ in _banda_superior(img) if c >= 0.7):
+        if any(_es_titulo_de_entradas(t) for t, c, _ in _banda_superior(img) if c >= 0.7):
             if progreso:
                 progreso(f"Leyendo los elementos de la hoja {pagina.number + 1} (OCR)…", 0.5 + 0.5 * pagina.number / n)
             hojas[str(pagina.number + 1)] = _leer_hoja_de_entradas(img)
@@ -251,15 +264,22 @@ def elementos_de_entradas(ruta, progreso=None):
     """
     if not disponible():
         return []
-    hojas = _con_cache(ruta, "entradas-raw-v2", lambda: _hojas_de_entradas(ruta, progreso))
+    hojas = _con_cache(ruta, "entradas-raw-v3", lambda: _hojas_de_entradas(ruta, progreso))
     salida = []
     for num in sorted(hojas, key=int):
         lecturas = [(t.strip(), c, tuple(caja)) for t, c, caja in hojas[num] if c >= 0.7]
-        titulo = next((caja for t, c, caja in lecturas if "ENTRADASDIGITALES" in re.sub(r"\s+", "", t).upper()), None)
+        titulo = next((caja for t, c, caja in lecturas if _es_titulo_de_entradas(t)), None)
         if not titulo:
             continue
         ty = titulo[1]
-        elementos = sorted(((caja[0], _elemento(t)) for t, c, caja in lecturas if ty + 400 < caja[1] < ty + 1100 and _elemento(t)))
+        elementos = [(caja[0], _elemento(t)) for t, c, caja in lecturas if ty + 400 < caja[1] < ty + 1100 and _elemento(t)]
+        for t, c, caja in lecturas:  # bornes de bornera: "-XFI" y, sobre cada punto, el número de borne
+            m = re.fullmatch(r"-?(XFI\d*)", t.replace(" ", ""))
+            if m and ty + 400 < caja[1] < ty + 1200:
+                elementos += [(c2[0], f"-{m.group(1)}/{t2}") for t2, cc, c2 in lecturas
+                              if re.fullmatch(r"\d{1,3}", t2) and cc >= 0.7 and c2[0] > caja[0]
+                              and caja[1] - 70 < c2[1] < caja[1] + 25]
+        elementos.sort()
         columnas = []
         for t, c, caja in sorted(lecturas, key=lambda l: (l[2][0], l[2][1])):
             if ty + 25 < caja[1] < ty + 170 and caja[3] - caja[1] < 70 and not _elemento(t) and len(t) > 2:
@@ -269,11 +289,13 @@ def elementos_de_entradas(ruta, progreso=None):
                     columnas.append([caja[0], [(caja[1], t)]])
         nombres = [(c[0], " ".join(t for _, t in sorted(c[1]))) for c in columnas]
         usados = set()
-        for x, el in elementos:  # cada elemento queda bajo su columna (a lo sumo ~110 px a un lado del encabezado)
-            if not nombres:
-                break
-            x_col, nom = min(nombres, key=lambda n: abs(n[0] - x))
-            if abs(x_col - x) <= 110 and x_col not in usados:
+        nombres.sort()
+        for x, el in elementos:  # el elemento pertenece a la columna cuyo encabezado empieza antes (hasta ~120 px a la derecha)
+            previas = [n for n in nombres if n[0] <= x + 120]
+            if not previas:
+                continue
+            x_col, nom = previas[-1]
+            if x_col not in usados:
                 usados.add(x_col)
                 salida.append((nom, el, int(num)))
     return salida
