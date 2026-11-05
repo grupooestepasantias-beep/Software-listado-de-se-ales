@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import queue
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -465,6 +466,45 @@ class App(tk.Tk):
             mensaje += "\n\nRevisar:\n- " + "\n- ".join(dict.fromkeys(avisos))
         messagebox.showinfo("Leer planos", mensaje)
 
+    def _con_avance(self, titulo, trabajo):
+        """Corre trabajo() en un hilo con una ventana de avance (el OCR de un plano puede tardar varios minutos)."""
+        import time
+        import extraer_pdf
+        estado = {"texto": "Leyendo…", "fraccion": 0.0, "resultado": None, "error": None}
+        extraer_pdf.PROGRESO_OCR = lambda t, f: estado.update(texto=t, fraccion=f)
+        extraer_pdf.TERMICAS_POR_OCR.clear()
+
+        def correr():
+            try:
+                estado["resultado"] = trabajo()
+            except Exception as e:  # se re-lanza en el hilo principal
+                estado["error"] = e
+        hilo = threading.Thread(target=correr, daemon=True)
+        hilo.start()
+        ventana = tk.Toplevel(self)
+        ventana.title(titulo)
+        ventana.transient(self)
+        ventana.resizable(False, False)
+        etiqueta = ttk.Label(ventana, text=estado["texto"], width=60)
+        etiqueta.pack(padx=14, pady=(14, 6))
+        barra = ttk.Progressbar(ventana, maximum=1.0, length=420)
+        barra.pack(padx=14, pady=(0, 6))
+        ttk.Label(ventana, foreground="gray", text="Si el plano trae los nombres dibujados como líneas se leen por OCR "
+                  "(puede tardar varios minutos la primera vez; después queda guardado).", wraplength=420).pack(padx=14, pady=(0, 14))
+        ventana.protocol("WM_DELETE_WINDOW", lambda: None)
+        try:
+            while hilo.is_alive():
+                etiqueta.config(text=estado["texto"])
+                barra["value"] = estado["fraccion"]
+                self.update()
+                time.sleep(0.05)
+        finally:
+            extraer_pdf.PROGRESO_OCR = None
+            ventana.destroy()
+        if estado["error"] is not None:
+            raise estado["error"]
+        return estado["resultado"]
+
     def _leer_termicas(self):
         if not self._confirmar_reemplazo(self.t_term):
             return
@@ -477,7 +517,7 @@ class App(tk.Tk):
         self.config(cursor="watch")
         self.update()
         try:
-            termicas = extraer_pdf.extraer_termicas(*rutas)
+            termicas = self._con_avance("Leyendo las térmicas del plano", lambda: extraer_pdf.extraer_termicas(*rutas))
         except Exception as e:
             messagebox.showerror("Error al leer los PDF", str(e))
             return ["No se pudieron leer las térmicas: " + str(e)]
@@ -488,7 +528,9 @@ class App(tk.Tk):
         self.t_term.cargar(extraer_pdf.aplicar_sugerencias(termicas))
         self.pdf_anexo["A1"] = rutas
         self.lbl_an1.config(text="Leído de: " + ", ".join(os.path.basename(r) for r in rutas)
-                            + ". Grupo y descripción: valores habituales de los protocolos de referencia; revisarlos.")
+                            + ". Grupo y descripción: valores habituales de los protocolos de referencia; revisarlos."
+                            + (" Los nombres de las térmicas se leyeron por OCR (están dibujados como líneas): verificarlos "
+                               "contra el plano." if extraer_pdf.TERMICAS_POR_OCR else ""))
         avisos = []
         if not termicas:
             avisos.append("No se encontraron térmicas (-Q…) en el PDF. Cargarlas a mano.")
@@ -781,4 +823,20 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 4 and sys.argv[1] == "--leer-termicas":  # prueba sin ventana: app.exe --leer-termicas plano.pdf salida.txt
+        import extraer_pdf
+        with open(sys.argv[3], "w", encoding="utf-8") as salida:
+            try:
+                try:
+                    import cv2  # noqa: F401
+                    import numpy  # noqa: F401
+                    import rapidocr_onnxruntime  # noqa: F401
+                    salida.write("OCR disponible\n")
+                except Exception as e:
+                    salida.write(f"OCR NO disponible: {e!r}\n")
+                for t in extraer_pdf.leer_termicas([sys.argv[2]]):
+                    salida.write(f"{t['termica']}\t{t['paginas']}\n")
+            except Exception as e:  # pragma: no cover
+                salida.write(f"ERROR {e!r}\n")
+        sys.exit(0)
     App().mainloop()

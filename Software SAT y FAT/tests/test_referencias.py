@@ -221,7 +221,7 @@ class PlanoConHojaResumenDeModulos(unittest.TestCase):
         self.assertIn("S06", {h.codigo for h in self.p})
         self.assertTrue(self.s[0].tupla()[0].startswith("(ver hoja 29"))
 
-    def test_cuenta_los_modulos_del_plano(self):
+    @unittest.skipUnless(__import__('ocr_plano').disponible(), 'sin rapidocr-onnxruntime')\n    def test_termicas_dibujadas_como_lineas_se_leen_por_ocr(self):\n        # La primera vez tarda varios minutos (OCR); después queda en la caché del usuario.\n        q = {t['termica'] for t in extraer_pdf.leer_termicas([ARROYITO])}\n        self.assertEqual(q, {'QCA', 'QCS', 'QC', 'QS', 'QM', 'QPOS', 'QM2', 'Q12', 'Q48.1', 'Q48.2', 'Q48.3'})\n        self.assertTrue(extraer_pdf.TERMICAS_POR_OCR)\n\n    def test_cuenta_los_modulos_del_plano(self):
         self.assertEqual(extraer_pdf.contar_modulos(ARROYITO), (2, 1))
 
     def test_nombres_repetidos_se_completan_a_mano_sin_falso_faltante(self):

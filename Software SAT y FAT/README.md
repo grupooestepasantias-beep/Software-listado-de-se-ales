@@ -85,13 +85,13 @@ pip install pyinstaller
 python -m PyInstaller --noconfirm --onefile --windowed --name GeneradorSAT ^
   --add-data "plantilla_sat.docx;." --add-data "plantilla_fat.docx;." ^
   --add-data "plantilla_fat_anexo1.docx;." --add-data "plantilla_fat_anexo2.docx;." ^`r`n  --add-data "plantilla_sat_anexo1.docx;." --add-data "plantilla_sat_anexo2.docx;." ^
-  --exclude-module pymupdf.layout --exclude-module pymupdf4llm --exclude-module onnxruntime --exclude-module PIL app.py
+  --exclude-module pymupdf.layout --exclude-module pymupdf4llm app.py
 ```
 Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del .exe. El .exe se publica en Releases, no dentro del código.
 
 ## Formatos de plano soportados
 - **La Paz (EF + TP):** hojas DETALLE MODULO DI/DO y cableado con bornes -XFI/-XF: señales, comandos, bornes y térmicas se leen completos.
-- **Hoja resumen de módulos (EDESTE/Arroyito, USRE-01-19-…-Ef-1102):** los nombres de señales y comandos se leen de la hoja de módulos (terminal por terminal, sin reservas ni comunes). El *elemento* de cada señal (-KI3.2…) y las térmicas (-QC, -QS) están dibujados como líneas en el PDF y no se pueden leer: se completan a mano y quedan registrados como dato manual. Para leerlos automáticamente habría que exportar el PDF con el texto como texto (no como geometría).
+- **Hoja resumen de módulos (EDESTE/Arroyito, USRE-01-19-…-Ef-1102):** los nombres de señales y comandos se leen de la hoja de módulos (terminal por terminal, sin reservas ni comunes). Las **térmicas** (-QCA, -QC, -QM2, -Q48.1…) están dibujadas como líneas y se leen por **OCR** (ocr_plano.py, rapidocr-onnxruntime): la primera vez tarda varios minutos (ventana con avance) y queda guardado en %LOCALAPPDATA%\GeneradorSAT\cache_ocr; salen como *pendiente de confirmación*. El *elemento* de cada señal (-KI3.2…) todavía no se lee: se completa a mano y queda registrado como dato manual.
 
 ## Estado y pendientes
 - Funciona: SAT y FAT, cada uno con Anexo 1 y Anexo 2 (6 Word), PDF, ZIP, trazabilidad, control de calidad, versiones.
@@ -99,6 +99,7 @@ Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del
   valores y normas del ensayo dieléctrico, descripciones/tensión de térmicas que no están en el plano, borne de
   "Falla Alimentación General" (el plano no lo da), SCADA SURVALENT.
 - Ideas de mejora: interfaz sin dependencia de Word, plantillas editables desde la ventana, lectura de más formatos de plano.
+
 
 
 

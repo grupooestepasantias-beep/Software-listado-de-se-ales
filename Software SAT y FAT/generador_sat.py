@@ -498,6 +498,12 @@ def pendientes_de_confirmacion(archivos, termicas):
                 continue
             salida.append(validador.Hallazgo("PEND", validador.INFO, validador.CONSISTENCIA, nombre, apartado,
                                              "PENDIENTE DE CONFIRMACIÓN: " + texto_, "Confirmar con ingeniería."))
+        if nombre.endswith("Anexo 1.docx") and extraer_pdf.TERMICAS_POR_OCR:
+            salida.append(validador.Hallazgo(
+                "PEND", validador.INFO, validador.CONSISTENCIA, nombre, "Anexo 1 / energizado",
+                "PENDIENTE DE CONFIRMACIÓN: las térmicas " + ", ".join("-" + q for q in sorted(extraer_pdf.TERMICAS_POR_OCR))
+                + " están dibujadas como líneas en el plano y se leyeron por OCR: verificarlas contra el plano.",
+                "Confirmar con ingeniería."))
     return salida
 
 

@@ -304,6 +304,10 @@ def leer_funcional(ruta):
 
 
 # ------------------------------------------------------------------ térmicas
+PROGRESO_OCR = None      # función(texto, fracción) que la ventana asigna para mostrar el avance del OCR
+TERMICAS_POR_OCR = set()  # térmicas que no estaban como texto en el PDF y se leyeron por OCR (hay que confirmarlas)
+
+
 def leer_termicas(rutas):
     """Térmicas (-Q…) de los planos: [{'termica','paginas':[(archivo,n)],'tension': '110 VCC' | ''}].
 
@@ -320,6 +324,13 @@ def leer_termicas(rutas):
                 e["paginas"].append((os.path.basename(ruta), pagina.number + 1))
                 if len(tensiones) == 1:
                     e["tensiones"] |= tensiones
+    if not encontradas:  # planos con los nombres dibujados como líneas: se leen por OCR (lento, queda en caché)
+        import ocr_plano
+        for ruta in rutas:
+            for q, paginas in ocr_plano.termicas_en_hojas(ruta, PROGRESO_OCR).items():
+                e = encontradas.setdefault(q, {"termica": q, "paginas": [], "tensiones": set()})
+                e["paginas"] += [(os.path.basename(ruta), n) for n in paginas]
+                TERMICAS_POR_OCR.add(q)
     orden = sorted(encontradas, key=lambda q: (ORDEN_TERMICAS.index(q) if q in ORDEN_TERMICAS else 99, q))
     salida = []
     for q in orden:
