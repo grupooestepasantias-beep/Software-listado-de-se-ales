@@ -179,6 +179,12 @@ class Doc:
                 if m:
                     self.portada["tipo"] = m.group(1)
                     break
+        if "anexo" not in self.portada:  # anexos del SAT: portada "PROTOCOLO DE ENSAYO – ANEXO N"
+            for t, _, _ in self.parrafos[:15]:
+                m = re.match(r"^PROTOCOLO DE ENSAYO\s*[–-]\s*ANEXO\s+(\d)\s*$", t, re.I)
+                if m:
+                    self.portada["anexo"] = m.group(1)
+                    break
         # Si "Tipo: SAT Fecha: ..." está en un solo párrafo, la fecha queda pegada al tipo
         fecha = self.portada.get("fecha", "")
         self.portada["fecha"] = re.sub(r"^\s*", "", fecha)
@@ -261,7 +267,13 @@ ESTRUCTURA = {
                "sub": [], "prohibidos": ["procedimiento de energizado"]},
 }
 
-ESTRUCTURA["SAT_A1"], ESTRUCTURA["SAT_A2"] = ESTRUCTURA["FAT_A1"], ESTRUCTURA["FAT_A2"]
+# Anexos del SAT (formato de los SAT de referencia): portada simple, título del anexo y su tabla; sin índice ni firmas
+ESTRUCTURA["SAT_A1"] = {"h1": [], "sub": [], "prohibidos": ["listado de señales"]}
+ESTRUCTURA["SAT_A2"] = {"h1": [], "sub": [], "prohibidos": ["procedimiento de energizado"]}
+
+
+def _anexo_sat(d):
+    return d.tipo in ("SAT_A1", "SAT_A2")
 
 ORTOGRAFIA = {  # error frecuente -> corrección sugerida (palabra completa, sin distinguir mayúsculas)
     "vetilación": "ventilación", "vetilacion": "ventilación", "c0upler": "coupler",
@@ -312,8 +324,10 @@ def _portada(d):
     hs = []
     base = ["fecha", "obra", "ubicacion", "tablero"]
     esperado = {"SAT": ["tipo"] + base, "FAT": ["tipo"] + base}
-    for anexo in ("SAT_A1", "SAT_A2", "FAT_A1", "FAT_A2"):
+    for anexo in ("FAT_A1", "FAT_A2"):
         esperado[anexo] = base + ["rev", "anexo"]
+    for anexo in ("SAT_A1", "SAT_A2"):  # los anexos del SAT no llevan revisión en la portada
+        esperado[anexo] = ["tipo"] + base + ["anexo"]
     if d.tipo == "DESCONOCIDO":
         return [_h("C02", BLOQUEANTE, DOCUMENTAL, d, "Portada", "No se pudo identificar si es SAT, FAT o anexo.",
                    "Revisar 'Tipo:' en la portada.")]
@@ -399,6 +413,8 @@ def _numeracion(d):
 
 def _indice(d, pdf):
     hs = []
+    if _anexo_sat(d):
+        return hs
     if not d.indice and not d.indice_sin_actualizar:
         if d.tipo != "DESCONOCIDO":
             hs.append(_h("I01", BLOQUEANTE, DOCUMENTAL, d, "Índice", "El documento no tiene índice."))
@@ -487,7 +503,15 @@ def _tablas(d):
                              "Corregir el nombre de los módulos (decisión técnica del responsable)."))
     if d.tipo.endswith("_A2"):
         hs += _tabla_senales(d)
-    if d.tipo.endswith("_A1"):
+    if d.tipo == "SAT_A1":
+        items = {_norm(_txt(tc)) for el, _ in d.tablas for tc in el.iter(qn("w:tc"))
+                 if _norm(_txt(tc)).startswith("Verificación") and not _norm(_txt(tc)).startswith("Verificación de")}
+        if not items:
+            hs.append(_h("T07", BLOQUEANTE, DOCUMENTAL, d, "Anexo 1", "El anexo no tiene ningún circuito a verificar."))
+        for i in sorted(items):
+            if not re.search(r"–\s*Q\w+$", i):
+                hs.append(_h("T08", BLOQUEANTE, DOCUMENTAL, d, "Anexo 1", f"'{i}' no indica la térmica (–Q…)."))
+    elif d.tipo.endswith("_A1"):
         en = d.tabla("energizado")
         filas = _filas(en)[1:] if en is not None else []
         filas = [f for f in filas if any(f)]
@@ -504,7 +528,9 @@ def _tablas(d):
             if not any(t.strip().startswith(requerido) for t, _, _ in d.parrafos):
                 hs.append(_h("T07", BLOQUEANTE, DOCUMENTAL, d, "Anexo 1", f"Falta la sección '{requerido}'."))
     firma = d.tabla("firma")
-    if firma is None:
+    if _anexo_sat(d):
+        pass
+    elif firma is None:
         hs.append(_h("T09", BLOQUEANTE, DOCUMENTAL, d, "Firmas", "Falta la tabla de firmas."))
     else:
         filas = _filas(firma)
@@ -724,14 +750,14 @@ def _consistencia_paquete(docs):
         if par is not d and par.portada.get("fecha") != d.portada.get("fecha"):
             hs.append(Hallazgo("P01", ADVERTENCIA, CONSISTENCIA, d.nombre, "Portada",
                                f"Fecha distinta a la de {par.nombre}: '{d.portada.get('fecha')}' vs '{par.portada.get('fecha')}'."))
-        if _cliente(d) != _cliente(ref):
+        if _cliente(d) != _cliente(ref) and _cliente(d) and _cliente(ref):  # los anexos del SAT no llevan firmas
             hs.append(Hallazgo("P01", BLOQUEANTE, CONSISTENCIA, d.nombre, "Firmas",
                                f"Cliente distinto al de {ref.nombre}: '{_cliente(d)}' vs '{_cliente(ref)}'."))
-        anexos_mismos = [x for x in docs if "_A" in x.tipo]
-        if "_A" in d.tipo and anexos_mismos and d.portada.get("rev") != anexos_mismos[0].portada.get("rev"):
+        anexos_mismos = [x for x in docs if "_A" in x.tipo and familia(x) == "FAT"]  # el SAT no muestra revisión en los anexos
+        if "_A" in d.tipo and familia(d) == "FAT" and anexos_mismos and d.portada.get("rev") != anexos_mismos[0].portada.get("rev"):
             hs.append(Hallazgo("P02", ADVERTENCIA, CONSISTENCIA, d.nombre, "Portada",
                                f"Revisión distinta a la de {anexos_mismos[0].nombre}."))
-        if _filas_tabla(d, "refs") != _filas_tabla(ref, "refs"):
+        if d.tabla("refs") is not None and ref.tabla("refs") is not None and _filas_tabla(d, "refs") != _filas_tabla(ref, "refs"):
             hs.append(Hallazgo("P03", ADVERTENCIA, CONSISTENCIA, d.nombre, "Documentos de referencia",
                                f"La lista de documentos de referencia difiere de la de {ref.nombre}.",
                                "Si no es intencional, usar los mismos planos en todo el paquete."))

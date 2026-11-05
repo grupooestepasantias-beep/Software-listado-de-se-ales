@@ -45,6 +45,9 @@ def texto(el):
     return "".join(t.text or "" for t in el.iter(qn("w:t")))
 
 
+ANEXOS_SAT = ("SAT_A1", "SAT_A2")  # formato de los SAT de referencia: sin índice, documentos, observaciones ni firmas
+
+
 def abrir(clave):
     return docx.Document(PAQUETE["rutas"][clave])
 
@@ -126,13 +129,13 @@ class Estructura(unittest.TestCase):
         self.assertIn("referirse al Anexo 2", txt)
 
     def test_observaciones_en_hoja_nueva_en_todos(self):
-        for clave in PAQUETE["rutas"]:
+        for clave in [k for k in PAQUETE["rutas"] if k not in ANEXOS_SAT]:
             doc = abrir(clave)
             p = next(p for p in doc.paragraphs if p.text.strip().startswith("OBSERVACIONES"))
             self.assertTrue(p.paragraph_format.page_break_before, clave)
 
     def test_tabla_de_firma_en_dos_columnas_con_el_cliente(self):
-        for clave in PAQUETE["rutas"]:
+        for clave in [k for k in PAQUETE["rutas"] if k not in ANEXOS_SAT]:
             doc = abrir(clave)
             t = next(t for t in doc.tables if t.rows[0].cells[0].text.strip() == "Por Grupo Oeste")
             self.assertEqual([c.text.strip() for c in t.rows[0].cells], ["Por Grupo Oeste", "Por CLIENTE PRUEBA"], clave)
@@ -151,6 +154,8 @@ class Estructura(unittest.TestCase):
 class IndiceNumeracionYPaginas(unittest.TestCase):
     def test_el_indice_esta_actualizado_y_coincide_con_los_titulos(self):
         for clave, ruta in PAQUETE["rutas"].items():
+            if clave in ANEXOS_SAT:
+                continue
             d = validador.Doc(ruta)
             self.assertFalse(d.indice_sin_actualizar, clave)
             self.assertGreaterEqual(len(d.indice), 4, clave)
@@ -159,6 +164,8 @@ class IndiceNumeracionYPaginas(unittest.TestCase):
 
     def test_los_numeros_de_pagina_del_indice_coinciden_con_el_pdf(self):
         for clave, ruta in PAQUETE["rutas"].items():
+            if clave in ANEXOS_SAT:
+                continue
             pdf = os.path.splitext(ruta)[0] + ".pdf"
             self.assertTrue(os.path.exists(pdf), pdf)
             malos = [h for h in validador._paginas_del_indice(validador.Doc(ruta), pdf)]
@@ -166,6 +173,8 @@ class IndiceNumeracionYPaginas(unittest.TestCase):
 
     def test_el_indice_tiene_hipervinculos_validos(self):
         for clave, ruta in PAQUETE["rutas"].items():
+            if clave in ANEXOS_SAT:
+                continue
             with zipfile.ZipFile(ruta) as z:
                 xml = z.read("word/document.xml").decode("utf8")
             anclas = set(re.findall(r'<w:hyperlink[^>]*w:anchor="([^"]+)"', xml))
@@ -204,7 +213,7 @@ class PiesDePagina(unittest.TestCase):
 
 class Tablas(unittest.TestCase):
     def test_documentos_de_referencia(self):
-        for clave in PAQUETE["rutas"]:
+        for clave in [k for k in PAQUETE["rutas"] if k not in ANEXOS_SAT]:
             t = next(t for t in abrir(clave).tables if t.rows[0].cells[0].text.strip().endswith(".pdf"))
             self.assertEqual([[c.text for c in r.cells] for r in t.rows], [list(x) for x in D.DOCUMENTOS], clave)
 

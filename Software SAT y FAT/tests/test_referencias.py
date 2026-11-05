@@ -1,4 +1,4 @@
-"""Comparación con los documentos de referencia de la red (se omite si la red no está disponible).
+﻿"""Comparación con los documentos de referencia de la red (se omite si la red no está disponible).
 
 Los PDF de La Paz y los protocolos de Nueva California se usan SOLO COMO ENTRADA DE LECTURA para
 comparar; nada se escribe en esas carpetas.
@@ -19,7 +19,7 @@ import datos_prueba as D
 import extraer_pdf
 import generador_sat as g
 
-RED = r"\\192.168.15.120\PasantiasMM\la paz"
+RED = r"\\192.168.15.101\Archivos\PasantiasMM\la paz"
 EF = RED + r"\Ing\ET-LP-0205-ET-CT-PL-EF-1006_rC.pdf"
 TP = RED + r"\Ing\ET-LP-0205-ET-CT-PL-TP-1006_rC.pdf"
 NC_SAT = RED + r"\SAT\Protocolo de ensayo SAT - Nueva California.docx"
@@ -183,7 +183,7 @@ class ContraNuevaCalifornia(unittest.TestCase):
                     salida.append("componentes")
                 elif primera.startswith("Por Grupo Oeste"):
                     salida.append("firma")
-                elif primera.startswith("Verificación anexo"):
+                elif primera.startswith(("Verificación anexo", "Verificación del Anexo")):
                     continue  # recuadros de verificación: convención de Santa Rosa (no están en Nueva California)
                 else:
                     salida.append("verificaciones")

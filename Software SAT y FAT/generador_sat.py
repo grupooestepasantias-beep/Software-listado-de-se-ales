@@ -35,6 +35,8 @@ PLANTILLAS = {
     "FAT": "plantilla_fat.docx",
     "FAT_ANEXO1": "plantilla_fat_anexo1.docx",
     "FAT_ANEXO2": "plantilla_fat_anexo2.docx",
+    "SAT_ANEXO1": "plantilla_sat_anexo1.docx",
+    "SAT_ANEXO2": "plantilla_sat_anexo2.docx",
 }
 PLANTILLA = os.path.join(carpeta_programa(), PLANTILLAS["SAT"])
 CANONICOS = ("SAT", "SAT_A1", "SAT_A2", "FAT", "FAT_A1", "FAT_A2")
@@ -326,8 +328,33 @@ def _insertar_procedimiento(doc, termicas):
     externa.getparent().remove(externa)
 
 
+def _insertar_lista_de_verificacion(doc, termicas):
+    """Anexo 1 del SAT (formato de los SAT hechos a mano): una tabla de verificación por grupo de tensión."""
+    externa = next(t for t in doc.tables if "ENERGIZACIÓN" in texto(t._tbl))._tbl
+    anidadas = [el for el in externa.iter(qn("w:tbl")) if el is not externa]
+    grupos = {"220": [], "110": []}
+    for grupo, descripcion, termica in termicas:
+        clave = "220" if "220" in grupo or "CA" in grupo.upper() else "110"
+        grupos[clave].append((f"Verificación {descripcion} –{termica.lstrip('-')}" if termica else f"Verificación {descripcion}",))
+    for tbl, clave in zip(anidadas, ("220", "110")):
+        if grupos[clave]:
+            llenar_filas(tbl, filas_xml(tbl)[:2], grupos[clave])
+            continue
+        titulo = tbl.getprevious()  # grupo sin térmicas: se quita la tabla y su título "ENERGIZACIÓN ..."
+        while titulo is not None and titulo.tag == qn("w:p") and not texto(titulo).strip():
+            titulo = titulo.getprevious()
+        if titulo is not None and "ENERGIZACIÓN" in texto(titulo):
+            titulo.getparent().remove(titulo)
+        tbl.getparent().remove(tbl)
+
+
 def generar_anexo1(datos, documentos, termicas, destino, tipo="FAT"):
-    """Anexo 1 (energizado) del FAT o del SAT. termicas: [(tensión esperada, descripción del circuito, 'Q221')]."""
+    """Anexo 1 (energizado). FAT: procedimiento completo. SAT: lista de verificación (como los SAT de referencia).
+    termicas: [(tensión esperada, descripción del circuito, 'Q221')]."""
+    if tipo == "SAT":
+        doc = docx.Document(ruta_plantilla("SAT_ANEXO1"))
+        _insertar_lista_de_verificacion(doc, termicas)
+        return _guardar(doc, datos, destino, tipo, anexo=1)
     doc = docx.Document(ruta_plantilla("FAT_ANEXO1"))
     llenar_tabla(_tabla_refs(doc), 0, documentos or [("", "")])
     _insertar_procedimiento(doc, termicas)
@@ -336,8 +363,9 @@ def generar_anexo1(datos, documentos, termicas, destino, tipo="FAT"):
 
 def generar_anexo2(datos, documentos, senales, comandos, destino, tipo="FAT"):
     """Anexo 2 (listado de señales) del FAT o del SAT. senales y comandos: [(borne, nombre)]."""
-    doc = docx.Document(ruta_plantilla("FAT_ANEXO2"))
-    llenar_tabla(_tabla_refs(doc), 0, documentos or [("", "")])
+    doc = docx.Document(ruta_plantilla("SAT_ANEXO2" if tipo == "SAT" else "FAT_ANEXO2"))
+    if tipo != "SAT":  # los anexos del SAT no llevan tabla de documentos de referencia
+        llenar_tabla(_tabla_refs(doc), 0, documentos or [("", "")])
 
     t_sen = next(t for t in doc.tables if t.rows[0].cells[-1].text.strip() == "SCADA SURVALENT")._tbl
     llenar_filas(t_sen, [filas_xml(t_sen)[6]], [(b, n, None, None) for b, n in senales] or [("", "", None, None)])

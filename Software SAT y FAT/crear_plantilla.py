@@ -1,4 +1,4 @@
-"""Crea las plantillas de los protocolos a partir de documentos existentes.
+﻿"""Crea las plantillas de los protocolos a partir de documentos existentes.
 
 - plantilla_sat.docx          desde el SAT de Santa Rosa rB (sin anexos)
 - plantilla_fat.docx          desde "Protocolo de ensayo FAT.docx" (La Paz)
@@ -29,8 +29,8 @@ from docx.oxml.ns import qn
 from docx_util import (encabezados_y_pies, estilos_indice, filas_xml, marcar_fila, nivel_esquema, parrafo_indice,
                        parrafos, quitar_numeracion, reemplazar, texto, total_paginas_en_campo)
 
-ORIGEN_SAT = r"\\192.168.15.120\PasantiasMM\la paz\SAT\Protocolo de ensayo SAT - Santa Rosa - rB.docx"
-ORIGEN_FAT = r"\\192.168.15.120\PasantiasMM\la paz\FAT"
+ORIGEN_SAT = r"\\192.168.15.101\Archivos\PasantiasMM\la paz\SAT\Protocolo de ensayo SAT - Santa Rosa - rB.docx"
+ORIGEN_FAT = r"\\192.168.15.101\Archivos\PasantiasMM\la paz\FAT"
 CARPETA = os.path.dirname(os.path.abspath(__file__))
 
 # Correcciones de ortografía y puntuación del texto fijo. No cambian ningún procedimiento.
@@ -376,7 +376,57 @@ def crear_sat(origen):
 
     # 9. Índice real, pies de página, estilos y niveles
     normalizar(doc, con_indice_sdt=False)
+    anexos_en_indice_y_etiquetas(doc)
     guardar(doc, "plantilla_sat.docx")
+
+
+def anexos_en_indice_y_etiquetas(doc):
+    """SAT: el índice cierra con 'ANEXO 1' y 'ANEXO 2' (archivos aparte, sin página) y los recuadros dicen 'del Anexo N'."""
+    toc = next(p for p in doc.element.body.iter(qn("w:p")) if any("TOC" in (i.text or "") for i in p.iter(qn("w:instrText"))))
+    sec = toc.find(qn("w:pPr") + "/" + qn("w:sectPr"))
+    seccion = doc.sections[0]
+    ancho = int((seccion.page_width - seccion.left_margin - seccion.right_margin) / 635)
+    ultimo = toc
+    for n in (1, 2):
+        p = OxmlElement("w:p")
+        ppr = OxmlElement("w:pPr")
+        tabs = OxmlElement("w:tabs")
+        tab = OxmlElement("w:tab")
+        for k, v in (("val", "right"), ("leader", "dot"), ("pos", str(ancho))):
+            tab.set(qn(f"w:{k}"), v)
+        tabs.append(tab)
+        ppr.append(tabs)
+        sp = OxmlElement("w:spacing")
+        sp.set(qn("w:after"), "100")
+        ppr.append(sp)
+        p.append(ppr)
+        r = OxmlElement("w:r")
+        rpr = OxmlElement("w:rPr")
+        f = OxmlElement("w:rFonts")
+        for k in ("ascii", "hAnsi", "cs"):
+            f.set(qn(f"w:{k}"), "Arial")
+        rpr.append(f)
+        b = OxmlElement("w:b")
+        rpr.append(b)
+        sz = OxmlElement("w:sz")
+        sz.set(qn("w:val"), "20")
+        rpr.append(sz)
+        r.append(rpr)
+        t = OxmlElement("w:t")
+        t.text = f"ANEXO {n}"
+        r.append(t)
+        r.append(OxmlElement("w:tab"))
+        p.append(r)
+        ultimo.addnext(p)
+        ultimo = p
+    if sec is not None:  # el salto de sección que cerraba el índice pasa a la última línea
+        toc.find(qn("w:pPr")).remove(sec)
+        ultimo.find(qn("w:pPr")).append(sec)
+    for p in parrafos(doc):
+        for viejo, nuevo in (("Verificación anexo 1.", "Verificación del Anexo 1"),
+                             ("Verificación anexo 2", "Verificación del Anexo 2")):
+            if p.text.strip() == viejo:
+                reemplazar(p, viejo, nuevo)
 
 
 # ---------------------------------------------------------------- FAT
@@ -433,6 +483,52 @@ def crear_fat_anexo2(origen):
     guardar(doc, "plantilla_fat_anexo2.docx")
 
 
+# ---------------------------------------------------------------- Anexos del SAT (formato de los SAT hechos a mano)
+ORIGEN_SAT_ANEXOS = r"\\192.168.15.101\Archivos\PasantiasMM\la paz\Words\words listos"
+REEMPLAZOS_SAT_ANEXO = [
+    ("205-EDESTE_Reemplazo RTUs", "{{OBRA}}"),
+    ("Tablero de Control – La Paz", "{{TIPO_TABLERO}} – {{NOMBRE}}"),
+    ("– 205 - EDESTE – La Paz", "– {{NRO_OBRA}} - {{CLIENTE}} – {{NOMBRE}}"),
+    ("– 205 - EDESTE – Santa Rosa", "– {{NRO_OBRA}} - {{CLIENTE}} – {{NOMBRE}}"),
+    ("Protocolo Ensayo Interno", "Protocolo Ensayo"),
+]
+
+
+def _anexo_sat_base(origen):
+    """Portada simple ('PROTOCOLO DE ENSAYO – ANEXO N', Tipo: SAT) sin índice, objeto ni firmas, como los SAT de referencia."""
+    doc = docx.Document(origen)
+    fecha_portada(doc)
+    reemplazar_en_doc(doc, REEMPLAZOS_SAT_ANEXO)
+    agregar_ubicacion(doc)
+    corregir_textos(doc)
+    total_paginas_en_campo(doc)
+    primera = doc.sections[0]
+    for sec in doc.sections[1:]:  # los originales difieren por décimas de milímetro entre secciones
+        sec.page_width, sec.page_height = primera.page_width, primera.page_height
+    return doc
+
+
+def crear_sat_anexo1(origen):
+    """Anexo 1 del SAT: lista de verificación por grupo de tensión (una tabla anidada por grupo, fila ítem + espacio)."""
+    doc = _anexo_sat_base(origen)
+    externa = next(t for t in doc.tables if "ENERGIZACIÓN" in texto(t._tbl))
+    for anidada in list(externa._tbl.iter(qn("w:tbl"))):
+        if anidada is not externa._tbl:
+            recortar_tabla(anidada, 2)
+    guardar(doc, "plantilla_sat_anexo1.docx")
+
+
+def crear_sat_anexo2(origen):
+    """Anexo 2 del SAT: tabla de señales y recuadro de verificación (los comandos se insertan al generar)."""
+    doc = _anexo_sat_base(origen)
+    t_sen = next(t for t in doc.tables if t.rows[0].cells[-1].text.strip() == "SCADA SURVALENT")
+    recortar_tabla(t_sen._tbl, 7)
+    externa = next(t for t in doc.tables if "Comandos" in texto(t._tbl))
+    anidada = next(el for el in externa._tbl.iter(qn("w:tbl")) if el is not externa._tbl)
+    recortar_tabla(anidada, 3)
+    guardar(doc, "plantilla_sat_anexo2.docx")
+
+
 def guardar(doc, nombre):
     ruta = os.path.join(CARPETA, nombre)
     doc.save(ruta)
@@ -444,6 +540,8 @@ def main(origen_sat=ORIGEN_SAT, carpeta_fat=ORIGEN_FAT):
     crear_fat(os.path.join(carpeta_fat, "Protocolo de ensayo FAT.docx"))
     crear_fat_anexo1(os.path.join(carpeta_fat, "Protocolo de ensayo FAT - La Paz Anexo1.docx"))
     crear_fat_anexo2(os.path.join(carpeta_fat, "Protocolo de ensayo FAT - La Paz Anexo2.docx"))
+    crear_sat_anexo1(os.path.join(ORIGEN_SAT_ANEXOS, "Protocolo de ensayo SAT - Anexo 1 - La Paz - rC.docx"))
+    crear_sat_anexo2(os.path.join(ORIGEN_SAT_ANEXOS, "Protocolo de ensayo SAT - Anexo 2 - La Paz - rC.docx"))
 
 
 if __name__ == "__main__":

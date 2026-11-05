@@ -10,7 +10,7 @@ a partir de los planos de ingeniería (PDF) y de los datos que carga el usuario.
 | Documento | Archivo | Contenido |
 |---|---|---|
 | SAT | `<Cliente> - Obra <N> - <Tablero> - Protocolo SAT - r<Rev>.docx` | Protocolo principal |
-| SAT Anexo 1 / Anexo 2 | `... - Protocolo SAT - r<Rev> - Anexo 1.docx` / `... Anexo 2.docx` | Energizado y señales/comandos, como archivos aparte |
+| SAT Anexo 1 / Anexo 2 | `... - Protocolo SAT - r<Rev> - Anexo 1.docx` / `... Anexo 2.docx` | Formato de los SAT de referencia: portada simple, lista de verificación de energizado (Anexo 1) y señales/comandos (Anexo 2) |
 | FAT | `... - Protocolo FAT - r<Rev>.docx` | Protocolo principal |
 | FAT Anexo 1 | `... - Protocolo FAT - r<Rev> - Anexo 1.docx` | Procedimiento de energizado (térmicas -Q…) |
 | FAT Anexo 2 | `... - Protocolo FAT - r<Rev> - Anexo 2.docx` | Señales DI y comandos DO (tablas) |
@@ -68,7 +68,7 @@ Hallazgos con gravedad **BLOQUEANTE / ADVERTENCIA / INFO** y tipo **FORMATO / DO
 | `word_tools.py` | Word por COM: actualizar índice/campos y exportar PDF |
 | `docx_util.py` | Utilidades de edición .docx |
 | `crear_plantilla.py` | Recrea las plantillas desde documentos de referencia (rutas de red de Grupo Oeste) |
-| `plantilla_*.docx` | Plantillas con marcadores `{{FECHA}}`, `{{OBRA}}`, `{{NOMBRE}}`… (SAT, FAT, Anexo 1, Anexo 2) |
+| `plantilla_*.docx` | Plantillas con marcadores `{{FECHA}}`, `{{OBRA}}`, `{{NOMBRE}}`… (SAT, FAT y sus anexos 1 y 2: 6 plantillas) |
 | `tests/`, `ejecutar_pruebas.py` | Pruebas automáticas (135) |
 | `INFORME.md` | Informe de auditoría del desarrollo |
 
@@ -83,7 +83,7 @@ Las pruebas que necesitan Word o los planos de la red (`\\192.168.15.120\Pasanti
 pip install pyinstaller
 python -m PyInstaller --noconfirm --onefile --windowed --name GeneradorSAT ^
   --add-data "plantilla_sat.docx;." --add-data "plantilla_fat.docx;." ^
-  --add-data "plantilla_fat_anexo1.docx;." --add-data "plantilla_fat_anexo2.docx;." ^
+  --add-data "plantilla_fat_anexo1.docx;." --add-data "plantilla_fat_anexo2.docx;." ^`r`n  --add-data "plantilla_sat_anexo1.docx;." --add-data "plantilla_sat_anexo2.docx;." ^
   --exclude-module pymupdf.layout --exclude-module pymupdf4llm --exclude-module onnxruntime --exclude-module PIL app.py
 ```
 Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del .exe. El .exe se publica en Releases, no dentro del código.
@@ -94,6 +94,7 @@ Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del
   valores y normas del ensayo dieléctrico, descripciones/tensión de térmicas que no están en el plano, borne de
   "Falla Alimentación General" (el plano no lo da), SCADA SURVALENT.
 - Ideas de mejora: interfaz sin dependencia de Word, plantillas editables desde la ventana, lectura de más formatos de plano.
+
 
 
 

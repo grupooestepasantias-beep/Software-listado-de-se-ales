@@ -1,4 +1,4 @@
-"""El generador no deja pasar datos sin respaldo en los PDF. Usa los planos reales de La Paz solo como lectura."""
+﻿"""El generador no deja pasar datos sin respaldo en los PDF. Usa los planos reales de La Paz solo como lectura."""
 import csv
 import os
 import shutil
@@ -17,7 +17,7 @@ import extraer_pdf
 import generador_sat as g
 import validador
 
-ING = r"\\192.168.15.120\PasantiasMM\la paz\Ing"
+ING = r"\\192.168.15.101\Archivos\PasantiasMM\la paz\Ing"
 EF = os.path.join(ING, "ET-LP-0205-ET-CT-PL-EF-1006_rC.pdf")
 TP = os.path.join(ING, "ET-LP-0205-ET-CT-PL-TP-1006_rC.pdf")
 CONFIRMA_PORTADA = {("PDF06", os.path.basename(TP))}
@@ -159,7 +159,7 @@ class PaqueteReal(unittest.TestCase):
         self.assertEqual(len(cmd), 28)
 
     def test_anexo_1_es_un_procedimiento_ordenado(self):
-        d = validador.Doc(next(a for a in self.r["archivos"] if a.endswith("Protocolo SAT - rA - Anexo 1.docx")))
+        d = validador.Doc(next(a for a in self.r["archivos"] if a.endswith("Protocolo FAT - rA - Anexo 1.docx")))
         filas = validador._filas(d.tabla("energizado"))
         self.assertEqual(filas[0], ["Paso", "Circuito (térmica)", "Tensión esperada", "Tensión medida",
                                     "Indicaciones observadas", "Resultado"])
