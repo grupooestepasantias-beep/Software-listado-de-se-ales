@@ -509,7 +509,7 @@ def _tablas(d):
         if not items:
             hs.append(_h("T07", BLOQUEANTE, DOCUMENTAL, d, "Anexo 1", "El anexo no tiene ningún circuito a verificar."))
         for i in sorted(items):
-            if not re.search(r"–\s*Q\w+$", i):
+            if not re.search(r"–\s*Q[\w.]+$", i):
                 hs.append(_h("T08", BLOQUEANTE, DOCUMENTAL, d, "Anexo 1", f"'{i}' no indica la térmica (–Q…)."))
     elif d.tipo.endswith("_A1"):
         en = d.tabla("energizado")
@@ -520,7 +520,7 @@ def _tablas(d):
         for n, f in enumerate(filas, 1):
             if f[0] != str(n):
                 hs.append(_h("T08", BLOQUEANTE, FORMATO, d, "Anexo 1", f"Los pasos no están numerados en orden (fila {n}: '{f[0]}')."))
-            if not re.search(r"–\s*Q\w+$", f[1]):
+            if not re.search(r"–\s*Q[\w.]+$", f[1]):
                 hs.append(_h("T08", BLOQUEANTE, DOCUMENTAL, d, "Anexo 1", f"'{f[1]}' no indica la térmica (–Q…)."))
             if not f[2].strip():
                 hs.append(_h("T14", BLOQUEANTE, DOCUMENTAL, d, "Anexo 1", f"El paso {n} no indica la tensión esperada."))

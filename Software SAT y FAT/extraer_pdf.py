@@ -208,7 +208,7 @@ def _leer_hoja_de_modulos(doc, ruta):
                 (comandos if tipo == "DO" else senales).append(s)
     if not hojas:
         return None
-    asignados = _asignar_elementos(ruta, senales)
+    asignados = _asignar_elementos(ruta, senales) + _asignar_comandos(ruta, comandos)
     pendientes = sum(1 for s in senales + comandos if not s.borne)
     problemas = [_h("S06", ADVERTENCIA, ruta, hojas[0],
                     "Este plano no trae los bornes/elementos (-KI3.2…) como texto: están dibujados como líneas. "
@@ -220,6 +220,36 @@ def _leer_hoja_de_modulos(doc, ruta):
 
 def _normalizar_nombre(t):
     return re.sub(r"[^a-z0-9]", "", _sin_acentos(t).casefold())
+
+
+def _asignar_comandos(ruta, comandos):
+    """Completa el elemento de los comandos ('Apertura/Cierre Interruptor 252-0n') con la bobina -KC1.n / -KC2.n leída por OCR.
+
+    Qué interruptor es la celda de ENTRADA se aprende de las hojas que lo dicen (p. ej. "INTERRUPTOR 252-03 CELDA ENTRADA");
+    la otra celda es el otro interruptor que nombran los comandos.
+    """
+    import ocr_plano
+    if not ocr_plano.disponible():
+        return 0
+    leidas = ocr_plano.elementos_de_comandos(ruta, PROGRESO_OCR)
+    interruptores = {m.group(1) for s in comandos for m in [re.search(r"252-?(\d\d)", s.nombre)] if m}
+    por_lado = {lado: n for _, lado, _, _, n in leidas if n and n in interruptores}
+    for lado, otro in (("ENTRADA", "SALIDA"), ("SALIDA", "ENTRADA")):
+        restantes = interruptores - set(por_lado.values())
+        if lado not in por_lado and otro in por_lado and len(restantes) == 1:
+            por_lado[lado] = next(iter(restantes))
+    asignados = 0
+    for verbo, lado, elemento, hoja, _ in leidas:
+        n = por_lado.get(lado)
+        for s in comandos:
+            nombre = _sin_acentos(s.nombre).casefold()
+            if n and not s.borne and nombre.startswith(verbo.casefold()) and re.search(rf"252-?{n}\b", nombre):
+                s.borne = elemento
+                s.pagina_cableado = hoja
+                ELEMENTOS_POR_OCR.add(s.nombre)
+                asignados += 1
+                break
+    return asignados
 
 
 def _asignar_elementos(ruta, senales):
@@ -413,7 +443,8 @@ def analizar_plano(ruta):
     doc = _abrir(ruta)
     nombre = os.path.basename(ruta)
     info = {"ruta": ruta, "nombre": nombre, "paginas": len(doc), "numero": "", "tipo": "", "obra": "",
-            "rev_archivo": "", "rev_cuadro": "", "estacion_portada": "", "estacion_hojas": "", "hash": ""}
+            "rev_archivo": "", "rev_cuadro": "", "estacion_portada": "", "estacion_hojas": "", "estacion_proyecto": "",
+            "kv": set(), "hash": ""}
     textos = [p.get_text() for p in doc]
     primeras = " ".join(textos[:3])
     m = re.search(r"\b(ET[A-Z]{0,3}-[A-Z0-9]+-(\d{3,4})-ET-CT-PL-(EF|TP|EC)-?\d{3,4})\b", primeras)
@@ -436,6 +467,15 @@ def analizar_plano(ruta):
         info["estacion_portada"] = next((e for i, e in estaciones if i == 0), "")
         resto = Counter(e for i, e in estaciones if i > 0)
         info["estacion_hojas"] = resto.most_common(1)[0][0] if resto else info["estacion_portada"]
+    # Planos sin "E.T. NOMBRE": el cuadro dice "PROYECTO: ET Arroyito" (cada palabra suele venir en su propia línea)
+    proyectos = Counter(m3.group(1).strip() for t in textos
+                        for m3 in re.finditer(r"PROYECTO:\s*ET\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]+(?: [A-Za-zÁÉÍÓÚÑáéíóúñ]+)?)", t))
+    if proyectos:
+        info["estacion_proyecto"] = proyectos.most_common(1)[0][0]
+    # Tensiones nominales que nombra el plano (p. ej. "132/33/13,2 KV", "TABLERO CONTROL 33 kV")
+    for t in textos:
+        for m4 in re.finditer(r"(\d{1,3}(?:[.,]\d+)?(?:\s?/\s?\d{1,3}(?:[.,]\d+)?)*)\s?kV", t, re.I):
+            info["kv"] |= {float(x.replace(",", ".")) for x in re.findall(r"\d+(?:[.,]\d+)?", m4.group(1))}
     with open(ruta, "rb") as f:
         info["hash"] = hashlib.sha256(f.read()).hexdigest()
     return info
@@ -452,8 +492,9 @@ def validar_planos(rutas, datos, necesita_funcional=False):
     for p in planos:
         ruta = p["ruta"]
         if not p["numero"]:
-            hs.append(_h("PDF08", ADVERTENCIA, ruta, 1, "No se encontró el número de plano en la portada.",
-                         "Verificar que sea el plano correcto."))
+            hs.append(_h("PDF08", INFO, ruta, 1, "Este plano no trae el número de plano, el número de obra ni el cliente como texto "
+                         "(el cuadro los muestra como imágenes o no los tiene): no se pueden verificar.",
+                         "Confirmar el cliente y el nº de obra cargados con la ingeniería."))
         if p["rev_archivo"] and p["rev_cuadro"] and p["rev_archivo"] != p["rev_cuadro"]:
             hs.append(_h("PDF02", BLOQUEANTE, ruta, 1, f"El archivo dice revisión {p['rev_archivo']} pero el cuadro de "
                          f"revisiones del plano llega a la {p['rev_cuadro']}.", "Cargar la revisión vigente.",
@@ -462,11 +503,16 @@ def validar_planos(rutas, datos, necesita_funcional=False):
             hs.append(_h("PDF06", BLOQUEANTE, ruta, 1, f"La portada del plano dice 'E.T. {p['estacion_portada']}' y el resto de "
                          f"las hojas dicen 'E.T. {p['estacion_hojas']}'.",
                          "Corregir el plano o confirmar que es un error solo de la portada.", CONSISTENCIA, True))
-        est = p["estacion_hojas"] or p["estacion_portada"]
+        est = p["estacion_hojas"] or p["estacion_portada"] or p["estacion_proyecto"]
         nombre_obra = datos.get("NOMBRE", "")
         if est and nombre_obra and _norm(nombre_obra) not in _norm(est) and _norm(est) not in _norm(nombre_obra):
             hs.append(_h("PDF05", BLOQUEANTE, ruta, 1, f"El plano es de la estación '{est}' y la obra cargada es '{nombre_obra}'.",
                          "Cargar los planos de este tablero o confirmar que es el mismo.", CONSISTENCIA, True))
+        numeros = {float(x.replace(",", ".")) for x in re.findall(r"\d+(?:[.,]\d+)?", datos.get("TENSION", ""))}
+        if p["kv"] and numeros and not numeros <= p["kv"]:
+            en_plano = ", ".join(f"{v:g}".replace(".", ",") for v in sorted(p["kv"], reverse=True))
+            hs.append(_h("PDF11", BLOQUEANTE, ruta, 1, f"La tensión cargada ({datos.get('TENSION')}) no coincide con el plano, "
+                         f"que nombra {en_plano} kV.", "Corregir el campo Tensión o confirmar que es correcto.", CONSISTENCIA, True))
         nro = re.sub(r"\D", "", datos.get("NRO_OBRA", ""))
         if p["obra"] and nro and int(p["obra"]) != int(nro):
             hs.append(_h("PDF07", BLOQUEANTE, ruta, 1, f"El plano pertenece a la obra {int(p['obra'])} y se cargó la obra {nro}.",

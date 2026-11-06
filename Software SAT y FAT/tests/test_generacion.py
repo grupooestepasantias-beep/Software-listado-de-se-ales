@@ -52,6 +52,22 @@ def abrir(clave):
     return docx.Document(PAQUETE["rutas"][clave])
 
 
+class AnexoSatConGrupo48(unittest.TestCase):
+    def test_los_circuitos_de_48_vcc_van_en_su_propio_grupo(self):
+        termicas = list(D.TERMICAS) + [("48 VCC", "Alimentación fuente CPU", "Q48.1"), ("48 VCC", "Alimentación switch", "Q48.2")]
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = g.generar_anexo1(D.DATOS, D.DOCUMENTOS, termicas, tmp, tipo="SAT")
+            d = docx.Document(ruta)
+            xml = "".join(texto(t._tbl) for t in d.tables)
+            self.assertIn("ENERGIZACIÓN 48 VCC", xml)
+            self.assertIn("ENERGIZACIÓN 110 VCC", xml)
+            self.assertEqual(xml.count("Verificación"), len(termicas))
+            self.assertIn("Verificación Alimentación fuente CPU –Q48.1", xml)
+            i48 = xml.index("ENERGIZACIÓN 48 VCC")
+            self.assertGreater(xml.index("–Q48.1"), i48)           # los de 48 V cuelgan del grupo 48 VCC
+            self.assertLess(xml.index("–Q2"), i48)                  # y los de 110 V quedan antes
+
+
 class PaqueteCompleto(unittest.TestCase):
     def test_se_generan_los_cuatro_documentos(self):
         self.assertEqual(len(PAQUETE["rutas"]), 6)

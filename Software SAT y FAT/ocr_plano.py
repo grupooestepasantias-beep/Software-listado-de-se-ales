@@ -122,6 +122,24 @@ def _columna(x, textos):
     return min(textos, key=lambda t: abs((t[0] + t[1]) / 2 - x)) if textos else None
 
 
+VOCABULARIO = {  # el OCR pierde las tildes y a veces junta palabras: se restauran las del vocabulario de los planos
+    "ALIMENTACION": "ALIMENTACIÓN", "SENALIZACION": "SEÑALIZACIÓN", "DISTRIBUCION": "DISTRIBUCIÓN",
+    "EXPLORACION": "EXPLORACIÓN", "MIMICOS": "MÍMICOS", "CALEFACCION": "CALEFACCIÓN", "ILUMINACION": "ILUMINACIÓN",
+    "POSITIVOOSCILANTE": "POSITIVO OSCILANTE", "TENSION": "TENSIÓN", "PROTECCION": "PROTECCIÓN", "MEDICION": "MEDICIÓN",
+}
+
+
+def restaurar_texto(texto_):
+    return re.sub(r"[A-ZÑ]+", lambda m: VOCABULARIO.get(m.group(0), m.group(0)), texto_)
+
+
+def _tension_de_otro_nivel(codigo, tension):
+    """Q48.1 (48 V) bajo un título 'Distribución de 110 Vcc': el interruptor está después del convertidor, no es de esa tensión."""
+    m = re.match(r"Q(\d{2,3})", codigo)
+    numero = re.match(r"(\d+)", tension)
+    return bool(m and numero and int(m.group(1)) in (24, 48, 60, 125) and int(m.group(1)) != int(numero.group(1)))
+
+
 def _descripcion_y_tension(posicion, banda):
     """Encabezado de columna y título de la hoja más cercanos (en horizontal) a la térmica."""
     x = posicion[0]
@@ -137,9 +155,9 @@ def _descripcion_y_tension(posicion, banda):
     if titulo:
         m = TENSION.search(titulo[2])
         tension = f"{m.group(1)} {'VCA' if m.group(2).upper() in ('CA', 'AC') else 'VCC'}"
-    descripcion = cabecera[2] if cabecera else ""
+    descripcion = restaurar_texto(cabecera[2]) if cabecera else ""
     if cabecera and titulo and titulo[2].upper() != descripcion.upper():
-        descripcion += f" ({titulo[2]})"
+        descripcion += f" ({restaurar_texto(titulo[2])})"
     return descripcion, tension
 
 
@@ -190,6 +208,8 @@ def termicas_en_hojas(ruta, progreso=None):
     for num, hoja in hojas.items():
         for q, pos in hoja["posiciones"].items():
             descripcion, tension = _descripcion_y_tension(pos, [(t, c, tuple(caja)) for t, c, caja in hoja["banda"]])
+            if _tension_de_otro_nivel(q, tension):
+                tension = ""  # el plano no dice la tensión de ese circuito: la completa el usuario
             e = encontradas.setdefault(q, {"paginas": [], "tension": tension, "descripcion": descripcion})
             e["paginas"].append(int(num))
     for q in list(encontradas):  # "Q48" suelto es lectura parcial de "Q48.1"
@@ -243,6 +263,15 @@ def _leer_hoja_de_entradas(img):
     return lecturas
 
 
+def _par_consecutivo(digitos):
+    """'12' -> '1-2', '910' -> '9-10' si son dos números consecutivos; si no, ''."""
+    for i in range(1, len(digitos)):
+        a, b = digitos[:i], digitos[i:]
+        if not b.startswith("0") and not a.startswith("0") and int(b) == int(a) + 1:
+            return f"{a}-{b}"
+    return ""
+
+
 def _hojas_de_entradas(ruta, progreso):
     """OCR completo de las hojas 'ENTRADAS DIGITALES': {hoja: [[texto, confianza, caja]]}."""
     doc = pymupdf.open(ruta)
@@ -279,9 +308,20 @@ def elementos_de_entradas(ruta, progreso=None):
         for t, c, caja in lecturas:  # bornes de bornera: "-XFI" y, sobre cada punto, el número de borne
             m = re.fullmatch(r"-?(XFI\d*)", t.replace(" ", ""))
             if m and ty + 400 < caja[1] < ty + 1200:
-                elementos += [(c2[0], f"-{m.group(1)}/{t2}") for t2, cc, c2 in lecturas
-                              if re.fullmatch(r"\d{1,3}", t2) and cc >= 0.7 and c2[0] > caja[0]
-                              and caja[1] - 70 < c2[1] < caja[1] + 25]
+                numeros = sorted((c2[0], t2) for t2, cc, c2 in lecturas
+                                 if re.fullmatch(r"\d{1,3}", t2) and cc >= 0.7 and c2[0] > caja[0] and caja[1] - 70 < c2[1] < caja[1] + 25)
+                unicos = []  # el OCR repite cada número (y a veces lo parte: "910" y "9", "10"): uno por posición, el más largo
+                for x, n in numeros:
+                    if unicos and x - unicos[-1][0] < 60:
+                        if len(n) > len(unicos[-1][1]):
+                            unicos[-1] = (x, n)
+                    else:
+                        unicos.append((x, n))
+                numeros = unicos
+                pares = [_par_consecutivo(n) for _, n in numeros]
+                if len(numeros) >= 2 and all(pares):  # cada señal usa dos puntos: el OCR junta "1 2" en "12"
+                    numeros = [(x, p_) for (x, _), p_ in zip(numeros, pares)]
+                elementos += [(x, f"-{m.group(1)}/{n}") for x, n in numeros]
         elementos.sort()
         columnas = []
         for t, c, caja in sorted(lecturas, key=lambda l: (l[2][0], l[2][1])):
@@ -301,4 +341,63 @@ def elementos_de_entradas(ruta, progreso=None):
             if x_col not in usados:
                 usados.add(x_col)
                 salida.append((nom, el, int(num)))
+    return salida
+
+
+# ---------------------------------------------------------------- comandos (bobinas -KC1.3, -KC2.3…)
+def _es_hoja_de_comandos(banda):
+    return any("COMAND" in re.sub(r"\s+", "", t).upper().replace("0", "O") for t, c, _ in banda if c >= 0.7)
+
+
+def _hojas_de_comandos(ruta, progreso):
+    """{hoja: [[texto, confianza, caja]]} de las hojas de comando: solo las bobinas -KC<k>.<n> y los encabezados de verbo."""
+    doc = pymupdf.open(ruta)
+    n = len(doc)
+    hojas = {}
+    for pagina in doc:
+        if progreso:
+            progreso(f"Buscando las hojas de comandos ({pagina.number + 1} de {n})…", pagina.number / n)
+        img = _imagen(pagina, 250)
+        if _es_hoja_de_comandos(_banda_superior(img)):
+            lecturas = _leer(img)
+            hojas[str(pagina.number + 1)] = [[t, c, list(caja)] for t, c, caja in lecturas
+                                              if re.fullmatch(r"-?K[CO0][12]\.\d", t.replace(" ", ""))]
+    return hojas
+
+
+def _bandas_de_comandos(ruta, hojas):
+    """Textos de la franja superior de cada hoja de comando (dicen si es la celda de ENTRADA o la de SALIDA y a veces el interruptor)."""
+    doc = pymupdf.open(ruta)
+    return {num: [t for t, c, _ in _banda_superior(_imagen(doc[int(num) - 1], 250)) if c >= 0.7] for num in hojas}
+
+
+def elementos_de_comandos(ruta, progreso=None):
+    """[(verbo, lado, elemento, hoja, interruptor)]: bobinas -KC1.n (Apertura) y -KC2.n (Cierre) de la celda de ENTRADA o de SALIDA.
+
+    La numeración de las bobinas cambia entre revisiones (rB: -KC1.1/-KC2.1 y -KC1.2/-KC2.2; r2: .3 y .2), así que la celda
+    se toma del título de la hoja ("CELDA ENTRADA" / "CELDA SALIDA", y el interruptor 252-0n si el título lo dice).
+    En cada hoja -KC1 va a la izquierda de -KC2 (ABRIR / CERRAR): si el orden no coincide, la bobina no se usa.
+    """
+    if not disponible():
+        return []
+    hojas = _con_cache(ruta, "comandos-raw-v1", lambda: _hojas_de_comandos(ruta, progreso))
+    bandas = _con_cache(ruta, "comandos-bandas-v1", lambda: _bandas_de_comandos(ruta, hojas))
+    salida, vistos = [], set()
+    for num in sorted(hojas, key=int):
+        texto_ = re.sub(r"\s+", "", " ".join(bandas.get(num, []))).upper().replace("0", "O")
+        lado = "ENTRADA" if "CELDAENTRADA" in texto_ else "SALIDA" if "CELDASALIDA" in texto_ else ""
+        interruptor = (re.search(r"252-?(\d\d)", " ".join(bandas.get(num, [])).replace(" ", "")) or [None, ""])[1]
+        bobinas = {}
+        for t, c, caja in hojas[num]:
+            m = re.fullmatch(r"-?K[CO0]([12])\.(\d)", t.replace(" ", ""))
+            if m and c >= 0.85:
+                bobinas.setdefault(m.group(2), {})[int(m.group(1))] = (caja[0], m.group(0).replace("O", "C").replace("0", "C"))
+        for por_k in bobinas.values():
+            if not lado or set(por_k) != {1, 2} or not por_k[1][0] < por_k[2][0]:
+                continue
+            for k, verbo in ((1, "Apertura"), (2, "Cierre")):
+                if (k, lado) not in vistos:
+                    vistos.add((k, lado))
+                    nombre = por_k[k][1]
+                    salida.append((verbo, lado, nombre if nombre.startswith("-") else "-" + nombre, int(num), interruptor))
     return salida

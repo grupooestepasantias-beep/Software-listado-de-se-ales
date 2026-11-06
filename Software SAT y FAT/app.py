@@ -1,4 +1,4 @@
-"""Generador de protocolos SAT / FAT (con Anexos 1 y 2) - Grupo Oeste."""
+﻿"""Generador de protocolos SAT / FAT (con Anexos 1 y 2) - Grupo Oeste."""
 import datetime
 import json
 import os
@@ -241,7 +241,7 @@ class App(tk.Tk):
         p2.rowconfigure(1, weight=1)
         self.pestanas.add(p2, text="Anexo 1 - Energizado")
         self.lbl_an1 = ttk.Label(p2, foreground="gray", text="Subí el PDF de planos (topográfico y/o funcional) para "
-                                 "leer las térmicas. Grupo: 220 VCA o 110 VCC.")
+                                 "leer las térmicas. Grupo: 220 VCA, 110 VCC o 48 VCC.")
         self.lbl_an1.grid(row=0, column=0, sticky="w")
         marco, self.t_term = panel_tabla(
             p2, "Térmicas del Anexo 1", ("Grupo", "Descripción", "Térmica"), (90, 460, 90),

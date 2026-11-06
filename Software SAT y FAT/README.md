@@ -91,7 +91,7 @@ Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del
 
 ## Formatos de plano soportados
 - **La Paz (EF + TP):** hojas DETALLE MODULO DI/DO y cableado con bornes -XFI/-XF: señales, comandos, bornes y térmicas se leen completos.
-- **Hoja resumen de módulos (EDESTE/Arroyito, USRE-01-19-…-Ef-1102):** los nombres de señales y comandos se leen de la hoja de módulos (terminal por terminal, sin reservas ni comunes). Las **térmicas** (-QCA, -QC, -QM2, -Q48.1…) están dibujadas como líneas y se leen por **OCR** (ocr_plano.py, rapidocr-onnxruntime): la primera vez tarda varios minutos (ventana con avance) y queda guardado en %LOCALAPPDATA%\GeneradorSAT\cache_ocr; salen como *pendiente de confirmación*. También por OCR se leen la **descripción y la tensión** de cada térmica (título y encabezado de columna de su hoja) y el **elemento** (-KI3.2, -QC…) de las entradas de las hojas *ENTRADAS DIGITALES*, emparejados por columna y por orden de terminales; en el plano r2 de Arroyito quedan 15 de 32 entradas y los 4 comandos sin elemento y se completan a mano (dato manual registrado). Todo lo leído por OCR figura como *pendiente de confirmación*.
+- **Hoja resumen de módulos (EDESTE/Arroyito, USRE-01-19-…-Ef-1102):** los nombres de señales y comandos se leen de la hoja de módulos (terminal por terminal, sin reservas ni comunes). Las **térmicas** (-QCA, -QC, -QM2, -Q48.1…) están dibujadas como líneas y se leen por **OCR** (ocr_plano.py, rapidocr-onnxruntime): la primera vez tarda varios minutos (ventana con avance) y queda guardado en %LOCALAPPDATA%\GeneradorSAT\cache_ocr; salen como *pendiente de confirmación*. También por OCR se leen la **descripción y la tensión** de cada térmica (título y encabezado de columna de su hoja) y el **elemento** (-KI3.2, -QC…) de las entradas de las hojas *ENTRADAS DIGITALES*, emparejados por columna y por orden de terminales; en el plano r2 de Arroyito quedan 15 de 32 entradas y los 4 comandos sin elemento y se completan a mano (dato manual registrado). Las bobinas de los comandos (-KC1.n Apertura / -KC2.n Cierre) también se leen por OCR (la celda sale del título de la hoja). Los números de borne -XFI que el plano dibuja de a dos (1 2) se separan (-XFI/1-2). Se comparan con el plano el **nombre** de la estación (PROYECTO: ET …) y la **tensión** (kV), y los avisos de La Paz solo aparecen si corresponden. El Anexo 1 del SAT tiene grupo 48 VCC. Todo lo leído por OCR figura como *pendiente de confirmación*.
 
 ## Estado y pendientes
 - Funciona: SAT y FAT, cada uno con Anexo 1 y Anexo 2 (6 Word), PDF, ZIP, trazabilidad, control de calidad, versiones.
@@ -99,6 +99,7 @@ Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del
   valores y normas del ensayo dieléctrico, descripciones/tensión de térmicas que no están en el plano, borne de
   "Falla Alimentación General" (el plano no lo da), SCADA SURVALENT.
 - Ideas de mejora: interfaz sin dependencia de Word, plantillas editables desde la ventana, lectura de más formatos de plano.
+
 
 
 

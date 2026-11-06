@@ -332,11 +332,24 @@ def _insertar_lista_de_verificacion(doc, termicas):
     """Anexo 1 del SAT (formato de los SAT hechos a mano): una tabla de verificación por grupo de tensión."""
     externa = next(t for t in doc.tables if "ENERGIZACIÓN" in texto(t._tbl))._tbl
     anidadas = [el for el in externa.iter(qn("w:tbl")) if el is not externa]
-    grupos = {"220": [], "110": []}
+    grupos = {"220": [], "110": [], "48": []}
     for grupo, descripcion, termica in termicas:
-        clave = "220" if "220" in grupo or "CA" in grupo.upper() else "110"
+        clave = "48" if re.search(r"\b48\b", grupo) else "220" if "220" in grupo or "CA" in grupo.upper() else "110"
         grupos[clave].append((f"Verificación {descripcion} –{termica.lstrip('-')}" if termica else f"Verificación {descripcion}",))
-    for tbl, clave in zip(anidadas, ("220", "110")):
+    if grupos["48"] and len(anidadas) == 2:  # el grupo 48 VCC copia el bloque (título + tabla) del grupo 110 VCC
+        tabla110 = anidadas[1]
+        copia = copy.deepcopy(tabla110)
+        titulo110 = tabla110.getprevious()
+        while titulo110 is not None and not (titulo110.tag == qn("w:p") and "ENERGIZACIÓN" in texto(titulo110)):
+            titulo110 = titulo110.getprevious()
+        tabla110.addnext(copia)
+        if titulo110 is not None:
+            titulo48 = copy.deepcopy(titulo110)
+            for tt in titulo48.iter(qn("w:t")):
+                tt.text = (tt.text or "").replace("110", "48")
+            copia.addprevious(titulo48)
+        anidadas.append(copia)
+    for tbl, clave in zip(anidadas, ("220", "110", "48")):
         if grupos[clave]:
             llenar_filas(tbl, filas_xml(tbl)[:2], grupos[clave])
             continue
@@ -479,17 +492,44 @@ PENDIENTES_FAT = [
     ("Ensayos dieléctricos", "Tensiones de prueba (500 Vcc, 2000 Vca / 2800 Vcc, 60 s), valor esperado >100 MΩ y normas "
      "(IEC 60255-27 / IEC 61439-1; la tabla cita IEC 255-5) son texto fijo del protocolo: los planos no los indican."),
     ("Anexo 1 / energizado", "La tensión de los circuitos Q220-Q223 (220 VCA) no figura en los planos (solo mencionan 110 V)."),
-    ("Hardware", "Los modelos RTAC SEL 2241, POWER COUPLER SEL 2243 y módulos SEL 2244-2/2244-3 no figuran en los planos."),
+    ("Hardware", "Los modelos {modelos} no figuran en los planos."),
     ("Ensayos funcionales", "Las referencias a SCADA SURVALENT y a la lista de señales provienen del protocolo, no de los planos."),
 ]
 
 
-def pendientes_de_confirmacion(archivos, termicas):
-    """Datos que el protocolo trae y los planos NO permiten verificar: se informan, no se dan por validados."""
+MODELOS_HARDWARE = (("2241", "RTAC SEL 2241"), ("2243", "POWER COUPLER SEL 2243"), ("2244", "módulos SEL 2244-2/2244-3"))
+
+
+def texto_de_planos(pdfs):
+    """Todo el texto de los planos cargados (para saber qué datos del protocolo sí respalda el plano)."""
+    partes = []
+    for ruta in _rutas_pdf(pdfs).values():
+        try:
+            import pymupdf
+            partes += [p.get_text() for p in pymupdf.open(ruta)]
+        except Exception:
+            pass
+    return " ".join(partes)
+
+
+def pendientes_de_confirmacion(archivos, termicas, textos_planos=""):
+    """Datos que el protocolo trae y los planos NO permiten verificar: se informan, no se dan por validados.
+
+    Cada aviso aparece solo si corresponde: el de Q220-Q223 si hay térmicas Q22x; el de modelos, por cada modelo
+    que el plano no nombra.
+    """
     salida = []
+    hay_q220 = any(re.fullmatch(r"Q22\d", q.lstrip("-")) for _, _, q in termicas)
+    sin_modelo = [nombre for numero, nombre in MODELOS_HARDWARE if numero not in textos_planos]
     for a in archivos:
         nombre = os.path.basename(a)
         for apartado, texto_ in PENDIENTES_FAT:
+            if apartado.startswith("Anexo 1") and not hay_q220:
+                continue
+            if apartado == "Hardware":
+                if not sin_modelo:
+                    continue
+                texto_ = texto_.format(modelos=", ".join(sin_modelo))
             if "Ensayos dieléctricos" in apartado and "Protocolo FAT - " in nombre and "Anexo" in nombre:
                 continue
             if apartado.startswith("Anexo 1") and not nombre.endswith("Anexo 1.docx"):
@@ -618,7 +658,7 @@ def generar_paquete(datos, documentos, componentes, termicas, senales, comandos,
                 + (r["error"] or "error desconocido"),
                 "Instalar/abrir Microsoft Word y volver a generar (o abrir el documento y actualizar el índice con F9)."))
     informe.hallazgos += [h for h in previos if h.gravedad != validador.BLOQUEANTE]
-    informe.hallazgos += pendientes_de_confirmacion(archivos, termicas)
+    informe.hallazgos += pendientes_de_confirmacion(archivos, termicas, texto_de_planos(pdfs))
 
     avisar("Armando la trazabilidad y el paquete…", 0.92)
     extras = []

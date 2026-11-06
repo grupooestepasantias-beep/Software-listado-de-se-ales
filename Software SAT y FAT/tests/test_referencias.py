@@ -199,6 +199,11 @@ class ContraNuevaCalifornia(unittest.TestCase):
         self.assertIn("protocolo de ensayos en sitio", nuestro_txt)
 
 
+def extraer_pdf_texto(ruta):
+    import pymupdf
+    return " ".join(p.get_text() for p in pymupdf.open(ruta))
+
+
 ARROYITO = r"\\192.168.15.101\Archivos\PasantiasMM\EDESTE\Funcional\USRE-01-19-ET-El-PL-Ef-1102_r2.pdf"
 
 
@@ -230,15 +235,42 @@ class PlanoConHojaResumenDeModulos(unittest.TestCase):
         # "Resorte descargado" figura en las hojas de ambas celdas: cada una va a su terminal, sin cruzarse
         self.assertEqual({x.terminal: x.borne for x in self.s if x.nombre.startswith("Resorte")}, {3: "-KI6.3", 13: "-KI6.2"})
         sin = [x for x in self.s if not x.borne]
-        self.assertTrue(sin and all(x.tupla()[0].startswith("(ver hoja 29") for x in sin))
-        self.assertTrue(all(not x.borne for x in self.c))  # los comandos no se leen: a mano
+        self.assertTrue(all(x.tupla()[0].startswith("(ver hoja 29") for x in sin))  # lo que el OCR no lee queda para completar
+        # comandos: bobinas -KC1.n (Apertura) y -KC2.n (Cierre) de la celda n, leídas de las hojas de comando
+        self.assertEqual({x.nombre: x.borne for x in self.c}, {
+            "Apertura Interruptor 252-03": "-KC1.3", "Cierre Interruptor 252-03": "-KC2.3",
+            "Apertura Interruptor 252-02": "-KC1.2", "Cierre Interruptor 252-02": "-KC2.2"})
 
     @unittest.skipUnless(ocr_plano.disponible(), "sin rapidocr-onnxruntime")
     def test_termicas_dibujadas_como_lineas_se_leen_por_ocr(self):
         # La primera vez tarda varios minutos (OCR); después queda en la caché del usuario.
-        q = {t["termica"] for t in extraer_pdf.leer_termicas([ARROYITO])}
-        self.assertEqual(q, {"QCA", "QCS", "QC", "QS", "QM", "QPOS", "QM2", "Q12", "Q48.1", "Q48.2", "Q48.3"})
+        t = {x["termica"]: x for x in extraer_pdf.leer_termicas([ARROYITO])}
+        self.assertEqual(set(t), {"QCA", "QCS", "QC", "QS", "QM", "QPOS", "QM2", "Q12", "Q48.1", "Q48.2", "Q48.3"})
         self.assertTrue(extraer_pdf.TERMICAS_POR_OCR)
+        self.assertEqual(t["QPOS"]["descripcion"].split(" (")[0], "POSITIVO OSCILANTE")  # palabras separadas y con tildes
+        self.assertTrue(t["QS"]["descripcion"].startswith("SEÑALIZACIÓN"))
+        # Q48.x están después del convertidor a 48 V: el título dice 110 Vcc, la tensión queda en blanco para completarla
+        self.assertEqual([t[q]["tension"] for q in ("Q48.1", "Q48.2", "Q48.3")], ["", "", ""])
+        self.assertEqual((t["QCA"]["tension"], t["QC"]["tension"]), ("220 VCA", "110 VCC"))
+
+    def test_nombre_y_tension_cargados_se_comparan_con_el_plano(self):
+        codigos = lambda **d: {h.codigo for h in extraer_pdf.validar_planos([ARROYITO], d) if h.gravedad == "BLOQUEANTE"}
+        self.assertEqual(codigos(NOMBRE="Arroyito", TENSION="33 KV"), set())
+        self.assertEqual(codigos(NOMBRE="ARROYITO", TENSION="132/33/13,2 KV"), set())  # solo tildes y mayúsculas se toleran
+        self.assertIn("PDF05", codigos(NOMBRE="Arrolito", TENSION="33 KV"))             # una letra de diferencia bloquea
+        self.assertIn("PDF11", codigos(NOMBRE="Arroyito", TENSION="66/13,2 KV"))
+        info = {h.codigo: h.gravedad for h in extraer_pdf.validar_planos([ARROYITO], dict(NOMBRE="Arroyito"))}
+        self.assertEqual(info["PDF08"], "INFO")  # el plano no trae cliente ni obra como texto
+
+    def test_avisos_fijos_de_la_paz_solo_si_corresponden(self):
+        texto_plano = extraer_pdf_texto(ARROYITO)
+        pend = g.pendientes_de_confirmacion(["x - Protocolo FAT - rB - Anexo 1.docx", "x - Protocolo FAT - rB.docx"],
+                                            [("110 VCC", "d", "QC")], texto_plano)
+        desc = " ".join(h.descripcion for h in pend)
+        self.assertNotIn("Q220", desc)                    # no hay térmicas Q220-Q223
+        self.assertIn("RTAC SEL 2241", desc)              # el plano no nombra el RTAC ni los power coupler
+        con_q220 = g.pendientes_de_confirmacion(["x - Protocolo FAT - rB - Anexo 1.docx"], [("220 VCA", "d", "Q221")], texto_plano)
+        self.assertIn("Q220", " ".join(h.descripcion for h in con_q220))
 
     def test_cuenta_los_modulos_del_plano(self):
         self.assertEqual(extraer_pdf.contar_modulos(ARROYITO), (2, 1))
