@@ -157,7 +157,7 @@ def _h(codigo, gravedad, ruta, pagina, desc, sol="", tipo=DOCUMENTAL, confirmabl
 # Este formato no trae las hojas "DETALLE MODULO DI/DO" ni bornes -XFI: una hoja dibuja cada módulo con el nombre de la
 # señal de cada terminal. El elemento de cada entrada (-KI3.2…) está dibujado como líneas, no como texto, así que NO se
 # puede leer del PDF: queda sin borne y el usuario lo completa a mano (se registra como dato manual).
-ELEMENTOS_POR_OCR = set()  # señales cuyo elemento se leyó por OCR (hay que confirmarlas)
+ELEMENTOS_POR_OCR = []  # una entrada por señal cuyo elemento se leyó por OCR (hay que confirmarlas)
 _NO_SENAL = re.compile(r"^(reserva|com[uú]n|positivo|negativo)\b", re.I)
 
 
@@ -210,11 +210,17 @@ def _leer_hoja_de_modulos(doc, ruta):
         return None
     asignados = _asignar_elementos(ruta, senales) + _asignar_comandos(ruta, comandos)
     pendientes = sum(1 for s in senales + comandos if not s.borne)
-    problemas = [_h("S06", ADVERTENCIA, ruta, hojas[0],
-                    "Este plano no trae los bornes/elementos (-KI3.2…) como texto: están dibujados como líneas. "
-                    f"Se leyeron por OCR {asignados} de {len(senales)} entradas (verificarlos contra el plano); "
-                    f"{pendientes} señales/comandos quedan sin elemento y hay que completarlos a mano desde las hojas de cableado.",
-                    "Completar la columna 'Borne / Elemento' en el Anexo 2.")]
+    total = len(senales) + len(comandos)
+    if pendientes:
+        problemas = [_h("S06", ADVERTENCIA, ruta, hojas[0],
+                        "Este plano no trae los bornes/elementos (-KI3.2…) como texto: están dibujados como líneas. "
+                        f"Se leyeron por OCR {asignados} de {total} señales y comandos; {pendientes} quedan sin elemento y hay que "
+                        "completarlos a mano desde las hojas de cableado.",
+                        "Completar la columna 'Borne / Elemento' en el Anexo 2.")]
+    else:  # todo leído: solo queda confirmarlo (el aviso de confirmación va aparte, como pendiente)
+        problemas = [_h("S06", INFO, ruta, hojas[0],
+                        f"Los {total} elementos (-KI3.2…) están dibujados como líneas en el plano y se leyeron por OCR: "
+                        "verificarlos contra las hojas de cableado.", "Confirmar con ingeniería.")]
     return senales, comandos, problemas
 
 
@@ -246,7 +252,7 @@ def _asignar_comandos(ruta, comandos):
             if n and not s.borne and nombre.startswith(verbo.casefold()) and re.search(rf"252-?{n}\b", nombre):
                 s.borne = elemento
                 s.pagina_cableado = hoja
-                ELEMENTOS_POR_OCR.add(s.nombre)
+                ELEMENTOS_POR_OCR.append(s.nombre)
                 asignados += 1
                 break
     return asignados
@@ -269,7 +275,7 @@ def _asignar_elementos(ruta, senales):
             if not s.borne and difflib.SequenceMatcher(None, n, _normalizar_nombre(s.nombre)).ratio() >= 0.88:
                 s.borne = elemento
                 s.pagina_cableado = hoja
-                ELEMENTOS_POR_OCR.add(s.nombre)
+                ELEMENTOS_POR_OCR.append(s.nombre)
                 asignados += 1
                 ultimo = i
                 break

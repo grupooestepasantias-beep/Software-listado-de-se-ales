@@ -224,6 +224,15 @@ class PlanoConHojaResumenDeModulos(unittest.TestCase):
 
     def test_los_elementos_leidos_por_ocr_son_los_del_plano_y_el_resto_queda_sin_borne(self):
         self.assertIn("S06", {h.codigo for h in self.p})
+        s06 = next(h for h in self.p if h.codigo == "S06")
+        if ocr_plano.disponible():  # el conteo suma entradas y comandos y es coherente (nunca "28 de 24")
+            m = re.search(r"OCR (\d+) de (\d+) señales y comandos; (\d+) quedan sin elemento", s06.descripcion)
+            self.assertTrue(m, s06.descripcion)
+            leidas, total, sin = map(int, m.groups())
+            self.assertEqual(total, len(self.s) + len(self.c))
+            self.assertEqual(leidas + sin, total)
+            self.assertEqual(sin, sum(1 for x in self.s + self.c if not x.borne))
+            self.assertEqual(s06.gravedad, "ADVERTENCIA")
         if not ocr_plano.disponible():
             self.assertTrue(all(not x.borne for x in self.s + self.c))
             return
