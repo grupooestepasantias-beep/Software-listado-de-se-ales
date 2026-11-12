@@ -1,0 +1,14 @@
+{
+  "_nota": "Estados S0-S3 (columnas K-N) por tipo de señal digital, y unidad por tipo de medición. Editable. S0 y S3 son los estados de error del doble bit. Los comandos usan los de su señal.",
+  "digitales": {
+    "alarma":        ["NORMAL", "ACTUO", "N/A", "N/A"],
+    "simple":        ["NORMAL", "OPERO", "N/A", "N/A"],
+    "abierto/cerrado": ["error_0", "AB", "CE", "error_1"],
+    "local/remoto":  ["error_0", "LOC", "REM", "error_1"],
+    "distancia/tele": ["error_0", "DIST", "TELE", "error_1"],
+    "doble":         ["error_0", "S1", "S2", "error_1"]
+  },
+  "reserva": ["N/A", "N/A", "N/A", "N/A"],
+  "medicion_defecto": {"min_raw": 0, "max_raw": 32767, "min_eu": 0, "max_eu": 327.67},
+  "unidades": ["KV", "KV", "KV", "A", "A", "A", "Hz", "N/A", "MW", "MVA", "Mvar", "KV", "A"]
+}

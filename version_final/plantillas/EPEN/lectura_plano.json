@@ -1,0 +1,238 @@
+{
+  "_nota": "Vocabulario para leer los planos de ingeniería (PDF) de este cliente. Es una propuesta: el usuario la revisa en la app.",
+  "ignorar_prefijos": [
+    "Positivo",
+    "Negativo",
+    "Común negativo",
+    "Común positivo",
+    "Comun negativo",
+    "Comun positivo"
+  ],
+  "reserva": "Reserva",
+  "min_columnas_pagina": 6,
+  "x_minimo_rel": 0.125,
+  "_modulos": "Numeración de las entradas (DI17) y salidas (DO9) de un módulo de E/S a partir de la posición de los bornes. Cada módulo son 2 bloques de 16 bornes con un hueco de ~2,4 pasos entre ellos (medido en el plano 6402); en los módulos de entradas los bornes de alimentación (Negativo) no cuentan como entrada; en los de salidas la salida n está en el borne 2n.",
+  "modulos": {
+    "bornes_por_bloque": 16,
+    "separacion_bloques_en_pasos": 2.4,
+    "bornes_negativos_entradas": [
+      10,
+      12,
+      14,
+      16,
+      26,
+      28,
+      30,
+      32
+    ]
+  },
+  "palabras_salida": [
+    "Cierre",
+    "Apertura",
+    "Abrir",
+    "Cerrar"
+  ],
+  "_pares": "Los sufijos van en el orden de los estados: la 1ª fila de la señal es el primero (Abierto, Local, Apertura…).",
+  "pares_doble_bit": [
+    {
+      "sufijos": [
+        "Abierto",
+        "Cerrado"
+      ],
+      "tipo": "SEÑALIZACION"
+    },
+    {
+      "sufijos": [
+        "Local",
+        "Remoto"
+      ],
+      "tipo": "SEÑALIZACION"
+    },
+    {
+      "sufijos": [
+        "en D",
+        "en T"
+      ],
+      "tipo": "SEÑALIZACION"
+    },
+    {
+      "sufijos": [
+        "en Telecontrol",
+        "en Distancia"
+      ],
+      "tipo": "SEÑALIZACION"
+    },
+    {
+      "sufijos": [
+        "Apertura",
+        "Cierre"
+      ],
+      "tipo": "COMANDO"
+    },
+    {
+      "sufijos": [
+        "Abrir",
+        "Cerrar"
+      ],
+      "tipo": "COMANDO"
+    }
+  ],
+  "_codigo_nivel": "Dígito de nivel de tensión (regla del usuario 2026-10-28): 132 y 66 kV = 3; 33 kV = 2; 13,2 / 13 / 6,6 kV = 1.",
+  "codigo_nivel": [
+    {
+      "codigo": "3",
+      "kv": [
+        132,
+        66
+      ]
+    },
+    {
+      "codigo": "2",
+      "kv": [
+        33
+      ]
+    },
+    {
+      "codigo": "1",
+      "kv": [
+        13.2,
+        13,
+        6.6
+      ]
+    }
+  ],
+  "controlador": "SEL-2241-{nivel}",
+  "_rele": "Las señales cuyo texto coincide con estos patrones llevan el relé de protección del campo (se pide al cargar el plano).",
+  "rele_patrones": [
+    "^Prot\\b"
+  ],
+  "_expansiones": "Abreviaturas del plano -> palabra completa (DESC. HMI lo más completa posible).",
+  "expansiones": {
+    "Secc": "Seccionador",
+    "Prot": "Proteccion",
+    "Ten": "Tension",
+    "Conj": "Conjunto",
+    "Cmdo": "Comando",
+    "F Motriz": "Fuerza Motriz",
+    "Alimentac": "Alimentacion",
+    "R.NEUTRO": "Reactor de Neutro",
+    "REACT": "Reactor"
+  },
+  "_abreviaturas_tag": "Palabra completa -> abreviatura en el TAG HMI (legible para una persona).",
+  "abreviaturas_tag": {
+    "Falta": "F",
+    "Auxiliar": "Aux",
+    "Proteccion": "Prot",
+    "Sobrecorriente": "Sobrec",
+    "Principal": "Ppal",
+    "Respaldo": "Resp",
+    "Diferencial": "Dif",
+    "Fuerza": "Fza"
+  },
+  "_mediciones": "Un campo mide si su página de bornes nombra a un multimedidor (patrón 'detectar'). Juego de mediciones tomado del listado ETAP (13 por campo); {campo} y {tension} se completan.",
+  "mediciones": {
+    "_": "Un campo mide si su página de bornes nombra a un multimedidor (patrón 'detectar'). Juego de mediciones tomado del listado ETAP (13 por campo); {campo} y {tension} se completan.",
+    "detectar": "Multimedidor",
+    "controlador": "ION 7400 / SCHNEIDER P142",
+    "juego": [
+      "TENSION CAMPO {campo} {tension} FASE R",
+      "TENSION CAMPO {campo} {tension} FASE S",
+      "TENSION CAMPO {campo} {tension} FASE T",
+      "CORRIENTE CAMPO {campo} {tension} FASE R",
+      "CORRIENTE CAMPO {campo} {tension} FASE S",
+      "CORRIENTE CAMPO {campo} {tension} FASE T",
+      "FRECUENCIA CAMPO {campo} {tension}",
+      "ANGULO DE FASE TOTAL CAMPO {campo} {tension}",
+      "POTENCIA ACTIVA CAMPO {campo} {tension}",
+      "POTENCIA APARENTE CAMPO {campo} {tension}",
+      "POTENCIA REACTIVA CAMPO {campo} {tension}",
+      "TENSION PROMEDIO CAMPO {campo} {tension}",
+      "CORRIENTE PROMEDIO CAMPO {campo} {tension}"
+    ]
+  },
+  "min_etiquetas_modulo": 8,
+  "_min_etiquetas_modulo": "Una franja de etiquetas alineadas es un módulo de E/S solo si tiene al menos esta cantidad; así no se confunden las tiras de cabecera ni los rótulos de cableado.",
+  "nivel_por_digito": {
+    "3": "132KV",
+    "2": "33KV",
+    "1": "6,6KV"
+  },
+  "_nivel_por_digito": "Dígito del tablero (TC3, TC2, TC1…) -> nivel, si el cajetín no dice la tensión. Mismo criterio de los tags: 3 = 132/66 kV, 2 = 33 kV, 1 = 13,2/6,6 kV.",
+  "rango_analogico": "\\d+\\s*[-–]\\s*\\d+",
+  "_rango_analogico": "Un módulo sin Positivo/Negativo cuyas etiquetas traen un rango (0-150º C) es de entradas analógicas.",
+  "tiras_rele": {
+    "_": "Hojas de los tableros de protección con una tira de celdas arriba (una señal del relé hacia el control por celda). Solo entran las hojas cuyo título coincide con estos patrones; las celdas 'RESERVA' no se cuentan (son salidas del relé, no del RTAC).",
+    "titulos": [
+      "SE.ALIZACI.N(ES)? (A|AL) SISTEMA DE CONTROL",
+      "SE.ALIZACI.N DIGITALES? DE PROT",
+      "SE.ALIZACI.N(ES)? (A|AL) (TABLERO )?TC\\d"
+    ],
+    "cabeceras_sin_prefijo": [
+      "ALARMAS",
+      "SEÑALIZACION",
+      "SEÑALIZACIÓN",
+      "SEÑALIZACIONES"
+    ],
+    "alto_tira": 135,
+    "tolerancia_celda": 18,
+    "alcance_cabecera": 150,
+    "salto_vertical": 22
+  },
+  "campo_por_titulo": {
+    "_": "Planos sin número de campo en el cajetín: el título del plano dice a qué campo especial pertenecen.",
+    "reglas": [
+      {
+        "patron": "ENTRADAS DIGITALES\\s*-\\s*ALARMAS",
+        "campo": "SAA"
+      }
+    ]
+  },
+  "pares_prefijo": {
+    "_": "Pares de doble bit donde el estado va al PRINCIPIO del rótulo: 'Cierre reconectador 152/01' + 'Apertura reconectador 152/01'.",
+    "pares": [
+      {
+        "prefijos": [
+          "Apertura",
+          "Cierre"
+        ],
+        "tipo": "COMANDO"
+      },
+      {
+        "prefijos": [
+          "Abrir",
+          "Cerrar"
+        ],
+        "tipo": "COMANDO"
+      }
+    ]
+  },
+  "complementos": {
+    "_": "Un rótulo suelto 'en local' (o 'en remoto') es una señalización de dos estados: el otro estado es su complemento, aunque el plano no lo nombre. Se lee como un par Local/Remoto de doble bit.",
+    "pares": [
+      {
+        "dado": "en local",
+        "falta": "en remoto",
+        "primero": "dado",
+        "texto": "en Local/Remoto"
+      },
+      {
+        "dado": "en remoto",
+        "falta": "en local",
+        "primero": "falta",
+        "texto": "en Local/Remoto"
+      }
+    ]
+  },
+  "comando_con_senalizacion": {
+    "_": "Un comando sin equipo ('Comando protección grupo A') va con la entrada que lo señaliza ('Señalización protección grupo A'): misma frase sin la palabra inicial.",
+    "prefijos_comando": [
+      "Comando"
+    ],
+    "prefijos_senal": [
+      "Señalización",
+      "Senalización",
+      "Señalizacion",
+      "Senalizacion"
+    ]
+  }
+}
