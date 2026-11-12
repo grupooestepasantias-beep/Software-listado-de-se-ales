@@ -1,4 +1,4 @@
-# Software SAT y FAT - Generador de protocolos de ensayo (Grupo Oeste)
+﻿# Software SAT y FAT - Generador de protocolos de ensayo (Grupo Oeste)
 
 Aplicación de escritorio para Windows (Python + tkinter) que genera los protocolos de ensayo **SAT** y **FAT** en Word
 a partir de los planos de ingeniería (PDF) y de los datos que carga el usuario. Los controla, exporta a PDF y deja registro.
@@ -99,6 +99,7 @@ Los `--exclude-module` son necesarios: sin ellos "Subir PDF…" falla dentro del
   valores y normas del ensayo dieléctrico, descripciones/tensión de térmicas que no están en el plano, borne de
   "Falla Alimentación General" (el plano no lo da), SCADA SURVALENT.
 - Ideas de mejora: interfaz sin dependencia de Word, plantillas editables desde la ventana, lectura de más formatos de plano.
+
 
 
 

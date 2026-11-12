@@ -137,7 +137,11 @@ def botones_basicos(tabla):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Generador de Protocolos SAT / FAT - Grupo Oeste")
+        self.title("Protocolos FAT y SAT - Grupo Oeste")
+        try:
+            self.iconbitmap(os.path.join(g.carpeta_programa(), "icono.ico"))
+        except Exception:  # sin ícono (p. ej. al correr desde el código sin el archivo) la ventana funciona igual
+            pass
         self.geometry("980x860")
         self.minsize(820, 700)
         self.vars = {}

@@ -22,8 +22,19 @@ CARACTERES_PROHIBIDOS = r'\/:*?"<>|'
 
 
 def carpeta_programa_usuario():
-    """Carpeta junto al .exe (o al .py) donde se guardan config.json y los proyectos."""
-    return os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
+    """Carpeta donde se guardan config.json y los proyectos.
+
+    Como .exe: una carpeta por usuario de Windows (%APPDATA%\\Protocolos FAT y SAT), así el programa puede estar en una
+    carpeta compartida de la red sin que los usuarios se pisen la configuración. Como .py: junto al código.
+    """
+    if getattr(sys, "frozen", False):
+        base = os.environ.get("APPDATA")
+        if base:
+            ruta = os.path.join(base, "Protocolos FAT y SAT")
+            os.makedirs(ruta, exist_ok=True)
+            return ruta
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def carpeta_proyectos():
