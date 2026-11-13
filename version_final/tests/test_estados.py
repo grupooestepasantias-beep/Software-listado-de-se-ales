@@ -11,9 +11,11 @@ class TestEstados(unittest.TestCase):
 
     def test_dobles_segun_los_rotulos_del_pdf(self):
         d = lambda *p: num.Senal(num.SENALIZACION, doble=True, pares=p)  # noqa: E731
-        self.assertEqual(est.estados(d("Interruptor 1 Abierto", "Interruptor 1 Cerrado"))[:4], ["error_0", "AB", "CE", "error_1"])
-        self.assertEqual(est.estados(d("Secc. Local", "Secc. Remoto"))[1:3], ["LOC", "REM"])
-        self.assertEqual(est.estados(d("Llave Tele/Distancia en D", "Llave Tele/Distancia en T"))[1:3], ["DIST", "TELE"])
+        self.assertEqual(est.estados(d("Interruptor 1 Abierto", "Interruptor 1 Cerrado"))[:4], ["error_0", "ABIERTO", "CERRADO", "error_1"])
+        self.assertEqual(est.estados(d("Secc. Local", "Secc. Remoto"))[1:3], ["LOCAL", "REMOTO"])
+        self.assertEqual(est.estados(d("Llave Tele/Distancia en D", "Llave Tele/Distancia en T"))[1:3], ["TELE", "DISTANCIA"])
+        self.assertEqual(est.estados(d("CBC Manual", "CBC Automatico"))[:4], ["error_0", "AUTO", "MAN", "error_1"])
+        self.assertEqual(est.estados(d("Prot Con Recierre", "Prot Sin Recierre"))[:4], ["error_0", "CON", "SIN", "error_1"])
 
     def test_reserva_todo_na(self):
         self.assertEqual(est.estados(num.Senal(num.ALARMAS, reserva=True)), ["N/A"] * 5)

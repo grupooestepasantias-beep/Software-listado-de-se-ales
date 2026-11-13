@@ -309,6 +309,9 @@ def a_proyecto(filas, campos, datos, perfil=None):
                       s0=valores[0], s1=valores[1], s2=valores[2], s3=valores[3], unidad=valores[4],
                       tipo_punto=TipoPunto(tipo_u) if tipo_u in ("DI", "DO", "AI", "AO") else None,
                       placa=placa_u, entrada=entrada_u, observaciones=obs_u)
+            if f.senal is not None and f.senal.origen is not None:           # de qué hoja de qué PDF salió
+                s.hoja = getattr(f.senal.origen, "pagina", None)
+                s.archivo = meta[f.campo].archivos[0] if meta[f.campo].archivos else ""
             campo_modelo(f).senales.append(s)
             sin_resolver.setdefault(f.campo, []).append((not ok, f.hueco))
 
@@ -382,6 +385,11 @@ def escribir(filas, campos, datos, ruta, perfil, caratula=None) -> int:
     cuántas descripciones quedaron en amarillo (no entraron en 20 caracteres con las abreviaturas)."""
     proyecto, marcas, huecos = a_proyecto(filas, campos, datos, perfil)
     marcas = marcas_vigentes(proyecto, marcas, getattr(datos, "ediciones", {}))
+    return escribir_proyecto(proyecto, marcas, huecos, datos.item_inicial, ruta, perfil, caratula)
+
+
+def escribir_proyecto(proyecto, marcas, huecos, item_inicial, ruta, perfil, caratula=None) -> int:
+    """Escribe el Excel desde un Proyecto ya armado (lo usan la exportación directa y la base central)."""
     if caratula is not None:
         proyecto.caratula = caratula
     excel_writer.escribir_xlsx(proyecto, perfil, ruta, incluir_caratula=caratula is not None,
@@ -389,7 +397,7 @@ def escribir(filas, campos, datos, ruta, perfil, caratula=None) -> int:
     primera = perfil.datos["hojas"]["primera_fila_datos"]
     wb = openpyxl.load_workbook(ruta)
     ws = wb[perfil.datos["hojas"]["listado"]]
-    item = datos.item_inicial
+    item = item_inicial
     for i, (m, hueco) in enumerate(zip(marcas, huecos)):
         fila = primera + i
         if hueco:

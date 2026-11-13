@@ -17,6 +17,7 @@ import desde_pdf
 import descripcion
 import estados as est
 import estilo
+import formatos
 import libro as lib
 import numeracion as num
 from modelo import Caratula
@@ -32,6 +33,29 @@ if not desde_pdf.MOSTRAR_UTR:                  # el apartado UTR (P a W) no se m
     COLUMNAS = [c for c in COLUMNAS if c[0] not in desde_pdf.COLUMNAS_UTR]
 AMARILLO = "#fff3a3"
 VERDE = "#d6f0d2"             # fila con alguna celda corregida a mano
+
+
+class DialogoFormato(tk.Toplevel):
+    """Qué formato de Excel exportar. Elegirlo no borra nada de lo cargado: solo decide qué columnas salen."""
+
+    def __init__(self, padre, sugerido: str):
+        super().__init__(padre)
+        self.title("Formato del Excel")
+        self.transient(padre)
+        self.elegido: str | None = None
+        self.var = tk.StringVar(value=sugerido)
+        ttk.Label(self, text="¿Con qué columnas querés el Excel?", padding=(12, 10, 12, 4)).pack(anchor="w")
+        for f in formatos.disponibles():
+            ttk.Radiobutton(self, text=f.nombre, value=f.id, variable=self.var).pack(anchor="w", padx=20, pady=2)
+        b = ttk.Frame(self)
+        b.pack(fill="x", padx=12, pady=10)
+        ttk.Button(b, text="Exportar", command=self._ok).pack(side="right")
+        ttk.Button(b, text="Cancelar", command=self.destroy).pack(side="right", padx=6)
+        self.grab_set()
+
+    def _ok(self) -> None:
+        self.elegido = self.var.get()
+        self.destroy()
 
 
 class DialogoDatos(tk.Toplevel):
@@ -616,15 +640,20 @@ class App(tk.Tk):
                                      + "\n• ".join(problemas) + "\n\nCorregilos en la pestaña «Carátula».")
                 self.pestanas.select(self.pestana_caratula)
                 return
+        d = DialogoFormato(self, "completo" if self.libro.datos.estilo == estilo.USRE else "reducido")
+        self.wait_window(d)
+        if d.elegido is None:
+            return
         ruta = filedialog.asksaveasfilename(title="Guardar Excel", defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")])
         if not ruta:
             return
         try:
-            n = self.libro.exportar(ruta, car)
+            n = self.libro.exportar_formato(d.elegido, ruta, car)
         except PermissionError:
             messagebox.showerror("Exportar", "No pude escribir el archivo. ¿Está abierto en Excel?")
             return
-        messagebox.showinfo("Exportar", f"Listo: {ruta}\n{'Con' if car else 'Sin'} carátula.\nDescripciones en amarillo: {n}")
+        messagebox.showinfo("Exportar", f"Listo: {ruta}\nFormato {d.elegido}. {'Con' if car else 'Sin'} carátula.\n"
+                                        f"Descripciones en amarillo: {n}")
 
     def guardar(self):
         """Guarda el proyecto (.json): PDFs, datos, celdas corregidas y carátula."""

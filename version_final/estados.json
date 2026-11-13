@@ -1,11 +1,13 @@
 {
-  "_nota": "Estados S0-S3 (columnas K-N) por tipo de señal digital, y unidad por tipo de medición. Editable. S0 y S3 son los estados de error del doble bit. Los comandos usan los de su señal.",
+  "_nota": "Estados S0-S3 (columnas K-N) por tipo de señal digital, y unidad por tipo de medición. Editable. S0 y S3 son los estados de error del doble bit. Los comandos usan los de su señal. Desde 2026-11-13 el texto de los estados es el del Excel oficial de Senillosa (ABIERTO/CERRADO, LOCAL/REMOTO, TELE/DISTANCIA, AUTO/MAN, CON/SIN) y error_0/error_1 como dicen las Reglas.",
   "digitales": {
     "alarma":        ["NORMAL", "ACTUO", "N/A", "N/A"],
     "simple":        ["NORMAL", "OPERO", "N/A", "N/A"],
-    "abierto/cerrado": ["error_0", "AB", "CE", "error_1"],
-    "local/remoto":  ["error_0", "LOC", "REM", "error_1"],
-    "distancia/tele": ["error_0", "DIST", "TELE", "error_1"],
+    "abierto/cerrado": ["error_0", "ABIERTO", "CERRADO", "error_1"],
+    "local/remoto":  ["error_0", "LOCAL", "REMOTO", "error_1"],
+    "distancia/tele": ["error_0", "TELE", "DISTANCIA", "error_1"],
+    "manual/automatico": ["error_0", "AUTO", "MAN", "error_1"],
+    "recierre":      ["error_0", "CON", "SIN", "error_1"],
     "doble":         ["error_0", "S1", "S2", "error_1"]
   },
   "reserva": ["N/A", "N/A", "N/A", "N/A"],

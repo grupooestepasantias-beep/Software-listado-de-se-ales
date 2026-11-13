@@ -10,6 +10,7 @@ from pathlib import Path
 import desde_pdf
 import estilo
 import numeracion as num
+from base import VERSION, ProyectoDB
 import pdf_plano
 import perfiles
 
@@ -197,6 +198,32 @@ class Libro:
         """Escribe el Excel. Con `caratula` (modelo.Caratula) la hoja de carátula va delante del listado."""
         return desde_pdf.escribir(self.filas, self.campos, self.datos, ruta, self.perfil, caratula)
 
+    # ------------------------------------------------------------ base central
+    def _datos_json(self) -> dict:
+        datos = asdict(self.datos)
+        datos["rangos"] = {str(k): v for k, v in datos["rangos"].items()}
+        return datos
+
+    def base(self, caratula=None) -> ProyectoDB:
+        """La base central del proyecto: una SenalBase por fila del listado, con el origen de cada dato."""
+        proyecto, marcas, huecos = self.proyecto()
+        marcas = self.marcas(proyecto, marcas)
+        return ProyectoDB.desde_proyecto(
+            proyecto, marcas, huecos, desde_pdf.claves_de(proyecto), self.datos.ediciones, estilo=self.datos.estilo,
+            pdfs=list(self.rutas), datos=self._datos_json(), caratula=asdict(caratula) if caratula is not None else None)
+
+    def exportar_formato(self, formato_id: str, ruta, caratula=None, db: ProyectoDB | None = None) -> int:
+        """Escribe el Excel en el formato elegido (`formatos/<id>.json`: completo, reducido…) desde la base central.
+        Elegir otro formato no cambia ningún dato: solo qué columnas salen."""
+        from formatos import cargar
+        from formatos.escritor import escribir
+        return escribir(db or self.base(caratula), cargar(formato_id), ruta, self.perfil, caratula)
+
+    def exportar_base(self, db: ProyectoDB, ruta, caratula=None) -> int:
+        """Escribe el Excel desde la base central (mismo resultado que `exportar`)."""
+        proyecto, marcas, huecos = db.a_proyecto()
+        return desde_pdf.escribir_proyecto(proyecto, marcas, huecos, db.item_inicial, ruta, self.perfil, caratula)
+
     # ------------------------------------------------------------ ediciones a mano
     def editar(self, clave: str, columna: str, valor: str) -> None:
         """Guarda una celda corregida a mano; sobrevive a recalcular (va por la clave de la fila)."""
@@ -212,17 +239,18 @@ class Libro:
     def guardar(self, ruta, caratula=None) -> None:
         """Guarda lo necesario para seguir otro día: los PDFs, los datos que se preguntaron, las celdas corregidas y la
         carátula. Los campos y las filas no se guardan: se vuelven a leer de los PDFs al abrir."""
-        datos = asdict(self.datos)
-        datos["rangos"] = {str(k): v for k, v in datos["rangos"].items()}
         Path(ruta).write_text(json.dumps({
-            "version": 1, "pdfs": self.rutas, "datos": datos, "calculado": bool(self.filas),
+            "version": VERSION, "pdfs": self.rutas, "datos": self._datos_json(), "calculado": bool(self.filas),
             "caratula": asdict(caratula) if caratula is not None else None,
+            "base": self.base(caratula).a_dict() if self.filas else None,     # versión 2: la base central
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def abrir(self, ruta, avance=None, avance_copia=None) -> tuple[dict | None, list[str]]:
         """Carga un proyecto guardado: vuelve a leer sus PDFs y restituye los datos. Devuelve (carátula como dict o None,
         PDFs que ya no están en su lugar)."""
         d = json.loads(Path(ruta).read_text(encoding="utf-8"))
+        if d.get("version", 1) > VERSION:                                  # versión 1 (sin base) y 2 se leen igual
+            raise ValueError(f"El proyecto es de una versión más nueva ({d['version']}) que la que sabe leer esta app.")
         self.vaciar()
         faltan = []
         for p in d.get("pdfs", []):

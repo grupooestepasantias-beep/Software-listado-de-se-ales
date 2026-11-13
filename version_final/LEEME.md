@@ -38,6 +38,35 @@ Valen para los dos: variable inicial 10 por campo (baja sola si no entra en 00-9
 editable en «Datos…» (el plano no la trae: «Entrada TR01», «LM1»…).
 Sale de comparar `134.xlsx` (app) con `USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx` (hecho a mano).
 
+## Base central (`base/`, etapa 1 del generador nuevo)
+- `base/senal.py` — `SenalBase`: UNA señal con todos los datos de una fila (identificación, nivel, campo, controlador,
+  función, HMI, SCADA, estados o escalas MIN/MAX RAW y EU, unidad, tipo, tablero, placa, entrada, bornera y borne de
+  tablero y de equipo, índice DNP, observaciones). Lo que no se conoce queda vacío. `origen` anota de dónde salió cada
+  dato: `pdf`, `regla` o `manual` (lo manual no se degrada al recalcular).
+- `base/proyecto_db.py` — `ProyectoDB`: la lista de `SenalBase` + PDFs, datos y carátula. Se llena con `Libro.base()`,
+  se guarda/carga en JSON versionado y vuelve a un `Proyecto` con `a_proyecto()`: el Excel que sale de la base
+  (`Libro.exportar_base`) es idéntico al de la exportación directa (lo prueban `tests/test_base.py`).
+- Los proyectos guardados son versión 2 (llevan la base); los de la versión 1 siguen abriendo.
+- Cada señal recuerda hoja y PDF de origen (para los avisos de la etapa 3). Tablero, borne e índice DNP todavía no se
+  llenan (etapa 4). El índice DNP es el mismo número que el OFFSET (regla del usuario, 2026-11-13; si cambia, avisa).
+- Estados con el texto del Excel oficial: ABIERTO/CERRADO, LOCAL/REMOTO, TELE/DISTANCIA, AUTO/MAN, CON/SIN, con
+  `error_0`/`error_1` de las Reglas.
+
+## Formatos de salida (`formatos/`, etapa 2)
+«Exportar Excel…» pregunta el formato (sugiere *completo* para obras USRE y *reducido* para ETAP). Siempre sale un .xlsx
+normal, editable. Elegir un formato no borra nada de la base: solo decide qué columnas salen.
+| Formato | Columnas | Aspecto |
+|---|---|---|
+| `reducido` | A-O: ITEM … UNITS (HMI, SCADA, mediciones y estados) | el de siempre |
+| `completo` | A-AB como el Excel oficial de Senillosa: + tipo, tablero, placa, entrada, bornera y borne de tablero y de equipo, índice DNP, observaciones | títulos de 4 filas, combinaciones, anchos, alturas, filtro e impresión del oficial |
+- Cada formato es `formatos/<id>.json` (qué campo de la base va en cada columna) + una plantilla de `plantillas/`. Para
+  sumar una columna o un formato nuevo se edita el JSON; no hace falta tocar el programa.
+- `formatos/escritor.py` escribe desde la base (`ProyectoDB`). La plantilla del completo sale del Excel oficial con
+  `herramientas/extraer_plantilla.py` (`plantillas/USRE/USRE_listado.json`).
+- Decisiones del usuario: la columna G «EXTERNAL NAME» queda vacía; se ignora la hoja oculta «ScaInit» del oficial; no se
+  fija el panel (el oficial lo tiene en A64). El índice DNP es igual al OFFSET. Tablero, bornera y borne salen vacíos
+  hasta la etapa 4. La carátula sigue la de la plantilla EPEN.
+
 ## Qué viene de dónde
 | Pieza | Origen |
 |---|---|

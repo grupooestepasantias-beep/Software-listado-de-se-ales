@@ -1,0 +1,26 @@
+{
+  "id": "reducido",
+  "nombre": "Reducido (HMI, SCADA, mediciones y estados)",
+  "_nota": "Las columnas A a O del listado de siempre (el de piohjh.xlsx): sin conexionado.",
+  "plantilla": "plantillas/EPEN/EPEN_plantilla.json",
+  "hoja": "EPEN",
+  "primera_fila_datos": 6,
+  "ultima_columna": "O",
+  "columnas": [
+    {"letra": "A", "campo": "item"},
+    {"letra": "B", "campo": "nivel"},
+    {"letra": "C", "campo": "descrip"},
+    {"letra": "D", "campo": "controlador"},
+    {"letra": "E", "campo": "funcion"},
+    {"letra": "F", "campo": "tag_hmi"},
+    {"letra": "G", "campo": "desc_hmi"},
+    {"letra": "H", "campo": "tag_scada"},
+    {"letra": "I", "campo": "offset"},
+    {"letra": "J", "campo": "desc_scada"},
+    {"letra": "K", "campo": "estado0"},
+    {"letra": "L", "campo": "estado1"},
+    {"letra": "M", "campo": "estado2"},
+    {"letra": "N", "campo": "estado3"},
+    {"letra": "O", "campo": "unidad"}
+  ]
+}

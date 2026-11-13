@@ -1,10 +1,10 @@
 """Estilo de redacción del listado. Dos estilos, deducidos de los listados hechos a mano:
 
 * ETAP (obra Aguada Pichana): DESC. HMI = prefijo del campo + texto sin tildes; un TAG HMI por cada estado de una señal
-  doble (abierto / cerrado); estados AB/CE, LOC/REM, error_0/error_1.
+  doble (abierto / cerrado); estados ABIERTO/CERRADO, LOCAL/REMOTO, error_0/error_1 (texto del Excel oficial, 2026-11-13).
 * USRE (obra Senillosa, `USRE-0119-SET-C-T-LI-Ls-0744`): DESC. HMI sin prefijo y en Título; los dos estados de una señal
   doble comparten UN solo TAG/DESC. HMI (`Reconectador_15201_Abierto_Cerrado`, la 2.ª fila va vacía); los códigos de equipo
-  van sin barra (152/01 -> 15201); estados con el nombre del propio estado (ABIERTO/CERRADO, err_0/err_1); alarmas con
+  van sin barra (152/01 -> 15201); estados con el nombre del propio estado (ABIERTO/CERRADO, error_0/error_1); alarmas con
   FALTA / FALLA / ACTUO según el texto; un rótulo «en local» con una sola entrada es UNA fila con un solo offset.
 
 El estilo se detecta por el nombre del PDF (USRE-… o ETAP-…) y se puede cambiar en «Datos…».

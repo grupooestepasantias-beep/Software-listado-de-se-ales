@@ -26,7 +26,9 @@ def tipo_estado(s: num.Senal) -> str:
     t = _plano(" ".join(s.pares))
     for clave, pistas in (("abierto/cerrado", ("abierto", "apertura", "abrir")),
                           ("local/remoto", ("local",)),
-                          ("distancia/tele", ("distancia", " en d", "tele"))):
+                          ("distancia/tele", ("distancia", " en d", "tele")),
+                          ("manual/automatico", ("manual", "automatic")),
+                          ("recierre", ("recierre",))):
         if any(p in t for p in pistas):
             return clave
     return "doble"
@@ -52,7 +54,7 @@ def _estados_usre(s: num.Senal, comando: tuple[str, ...] | None = None) -> list:
     if len(s.pares) == 2:
         _, e0, e1 = estilo.partir_par(*s.pares)
         n0, n1 = estilo.nombre_estado(e0), estilo.nombre_estado(e1)
-        return ["err_0", n0, n1, "err_1"] if s.doble else [n0, n1, NA, NA]
+        return ["error_0", n0, n1, "error_1"] if s.doble else [n0, n1, NA, NA]
     return ["NORMAL", "OPERO", NA, NA]
 
 

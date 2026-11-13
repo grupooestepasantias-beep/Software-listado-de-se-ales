@@ -119,6 +119,9 @@ class Senal:
     segunda_fila: bool = False
     # De dónde salió DESC. SCADA: "glosario", "reglas", "propuesta" (a confirmar) o "usuario". Vacío = sin generar.
     desc_scada_origen: str = ""
+    # De dónde se leyó la señal: hoja del PDF y nombre del archivo (para los avisos y para saltar a la fuente).
+    hoja: Optional[int] = None
+    archivo: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "Senal":

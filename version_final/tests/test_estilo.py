@@ -40,7 +40,7 @@ class TestTextos(unittest.TestCase):
 
     def test_estados_usre(self):
         ab = num.Senal(num.SENALIZACION, "x", doble=True, pares=("Seccionador 18901 Abierto", "Seccionador 18901 Cerrado"))
-        self.assertEqual(est.estados(ab, None, estilo.USRE), ["err_0", "ABIERTO", "CERRADO", "err_1", "N/A"])
+        self.assertEqual(est.estados(ab, None, estilo.USRE), ["error_0", "ABIERTO", "CERRADO", "error_1", "N/A"])
         una = num.Senal(num.SENALIZACION, "x", dos_estados=True,
                         pares=("Seccionador 18901 en remoto", "Seccionador 18901 en local"))
         self.assertEqual(est.estados(una, None, estilo.USRE), ["REMOTO", "LOCAL", "N/A", "N/A", "N/A"])
@@ -52,7 +52,7 @@ class TestTextos(unittest.TestCase):
 
     def test_el_estilo_etap_no_cambia(self):
         ab = num.Senal(num.SENALIZACION, "x", doble=True, pares=("Seccionador 18901 Abierto", "Seccionador 18901 Cerrado"))
-        self.assertEqual(est.estados(ab), ["error_0", "AB", "CE", "error_1", "N/A"])
+        self.assertEqual(est.estados(ab), ["error_0", "ABIERTO", "CERRADO", "error_1", "N/A"])
 
 
 @unittest.skipUnless(TCONTROL.exists(), "falta el PDF de Senillosa")
@@ -75,7 +75,7 @@ class TestSenillosa(unittest.TestCase):
     def test_senal_doble_con_un_solo_tag_hmi_y_segunda_fila_vacia(self):
         i = next(i for i, f in enumerate(self.filas) if f[5] == "Reconectador_15201_Abierto_Cerrado")
         self.assertEqual(self.filas[i][6], "Reconectador 15201 Abierto/Cerrado")
-        self.assertEqual(self.filas[i][10:14], ["err_0", "ABIERTO", "CERRADO", "err_1"])
+        self.assertEqual(self.filas[i][10:14], ["error_0", "ABIERTO", "CERRADO", "error_1"])
         seg = self.filas[i + 1]
         self.assertEqual((seg[5], seg[6], seg[7]), (None, None, None))
         self.assertEqual(seg[8], self.filas[i][8] + 1)               # ocupa el offset siguiente
