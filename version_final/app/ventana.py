@@ -13,6 +13,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+import avisos
 import desde_pdf
 import descripcion
 import estados as est
@@ -22,7 +23,9 @@ import libro as lib
 import numeracion as num
 from modelo import Caratula
 
-from . import caratula_ui
+from avisos import excel as aviso_excel
+
+from . import avisos_ui, caratula_ui, tema
 
 COLUMNAS = [("item", "ITEM", 45), ("nivel", "NIVEL", 55), ("descrip", "DESCRIP", 190), ("ctl", "CONTROLADOR", 110),
             ("funcion", "FUNCION", 95), ("taghmi", "TAG HMI", 200), ("deschmi", "DESC. HMI", 190),
@@ -33,47 +36,29 @@ if not desde_pdf.MOSTRAR_UTR:                  # el apartado UTR (P a W) no se m
     COLUMNAS = [c for c in COLUMNAS if c[0] not in desde_pdf.COLUMNAS_UTR]
 AMARILLO = "#fff3a3"
 VERDE = "#d6f0d2"             # fila con alguna celda corregida a mano
+SIN_COLOR_EN_FILA = {"CONEXIONADO_INCOMPLETO"}   # avisos generales: no pintan las cientos de filas a las que aluden
 
 
-class DialogoFormato(tk.Toplevel):
-    """Qué formato de Excel exportar. Elegirlo no borra nada de lo cargado: solo decide qué columnas salen."""
-
-    def __init__(self, padre, sugerido: str):
-        super().__init__(padre)
-        self.title("Formato del Excel")
-        self.transient(padre)
-        self.elegido: str | None = None
-        self.var = tk.StringVar(value=sugerido)
-        ttk.Label(self, text="¿Con qué columnas querés el Excel?", padding=(12, 10, 12, 4)).pack(anchor="w")
-        for f in formatos.disponibles():
-            ttk.Radiobutton(self, text=f.nombre, value=f.id, variable=self.var).pack(anchor="w", padx=20, pady=2)
-        b = ttk.Frame(self)
-        b.pack(fill="x", padx=12, pady=10)
-        ttk.Button(b, text="Exportar", command=self._ok).pack(side="right")
-        ttk.Button(b, text="Cancelar", command=self.destroy).pack(side="right", padx=6)
-        self.grab_set()
-
-    def _ok(self) -> None:
-        self.elegido = self.var.get()
-        self.destroy()
+FORMATO_EXCEL = "completo"       # el único formato que se exporta desde la pantalla (el reducido se quitó a pedido)
 
 
 class DialogoDatos(tk.Toplevel):
-    """Una sola ventana con todo lo que la app pregunta."""
+    """Una sola ventana con todo lo que la app pregunta. Entra en cualquier pantalla: lo que no cabe se desplaza."""
 
-    def __init__(self, padre, libro: lib.Libro):
+    def __init__(self, padre, libro: lib.Libro, pestana: str | None = None):
         super().__init__(padre)
-        self.title("Datos del listado SCADA")
+        self.title("Datos del listado")
         self.transient(padre)
         self.libro = libro
         self.resultado = False
+        self._lienzos: list[tuple[tk.Canvas, ttk.Frame]] = []
         d = libro.datos
         nb = ttk.Notebook(self)
-        nb.pack(fill="both", expand=True, padx=8, pady=8)
+        nb.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+        self.nb = nb
 
         # --- Campos y offsets
-        f = ttk.Frame(nb, padding=8)
-        nb.add(f, text="Campos y offsets")
+        f = self._desplazable(nb, "Campos y offsets")
         ttk.Label(f, text="Offset inicial (alarmas y señales)").grid(row=0, column=0, sticky="w")
         self.off_di = ttk.Entry(f, width=8)
         self.off_di.insert(0, d.offset_digital)
@@ -86,52 +71,54 @@ class DialogoDatos(tk.Toplevel):
         self.item = ttk.Entry(f, width=8)
         self.item.insert(0, d.item_inicial)
         self.item.grid(row=2, column=1, sticky="w", pady=2)
-        ttk.Label(f, text="Cada campo se numera aparte. El primer número del tag sale de la tensión del campo "
-                          "(132/66 kV = 3, 33 kV = 2, 13,2/6,6 kV = 1).", foreground="#555").grid(
-            row=3, column=0, columnspan=10, sticky="w", pady=(8, 0))
-        ttk.Label(f, text="Estilo del listado").grid(row=2, column=3, sticky="e", padx=(20, 4))
-        self.estilo = ttk.Combobox(f, values=list(estilo.ESTILOS), width=8, state="readonly")
+        ttk.Label(f, text="Estilo del listado").grid(row=0, column=3, sticky="e", padx=(16, 4))
+        self.estilo = ttk.Combobox(f, values=list(estilo.ESTILOS), width=7, state="readonly")
         self.estilo.set(d.estilo or estilo.ETAP)
-        self.estilo.grid(row=2, column=4, sticky="w")
-        ttk.Label(f, text="ETAP: DESC. HMI con prefijo, un tag por estado. USRE (Senillosa): sin prefijo, un solo tag por "
-                          "señal doble, estados con su nombre.", foreground="#555").grid(
-            row=2, column=5, columnspan=6, sticky="w", padx=6)
-        titulos = ("Campo", "Tensión", "Tag empieza con", "Señales", "Equipos", "Variable inicial", "Llega hasta",
-                   "Prefijo (ej. 204LC)", "Controlador", "Relé (protecciones)", "Descripción del campo", "Mediciones")
+        self.estilo.grid(row=0, column=4, sticky="w")
+        ttk.Label(f, wraplength=640, foreground="#555", text=(
+            "Cada campo se numera aparte; el primer número del tag sale de su tensión (132/66 kV = 3, 33 kV = 2, "
+            "13,2/6,6 kV = 1). Estilo ETAP: DESC. HMI con prefijo, un tag por estado. USRE (Senillosa): sin prefijo, "
+            "un solo tag por señal doble.")).grid(row=3, column=0, columnspan=13, sticky="w", pady=(6, 0))
+        titulos = ("Campo", "Tensión", "Tag", "Señ.", "Equip.", "Var. inicial", "Hasta", "Prefijo", "Controlador",
+                   "Ctrl. medición", "Tablero", "Relé", "Descripción", "Med.")
         for j, t in enumerate(titulos):
             ttk.Label(f, text=t, font=("", 9, "bold")).grid(row=4, column=j, pady=(6, 2), padx=2)
         self.fila_campo: dict[str, dict] = {}
         for i, c in enumerate(libro.campos):
             hecho = c.clave in libro.hechos
             fila = 5 + i
-            campo_e = ttk.Entry(f, width=9)
+            campo_e = ttk.Entry(f, width=6)
             campo_e.insert(0, d.numero.get(c.clave) or c.numero_pdf)
             campo_e.grid(row=fila, column=0, sticky="w", padx=2)
-            nivel = ttk.Entry(f, width=9)
+            nivel = ttk.Entry(f, width=7)
             nivel.insert(0, d.nivel.get(c.clave) or c.nivel_pdf)
-            dig = ttk.Label(f, text="", width=14)
-            llega = ttk.Label(f, text="", width=14)
-            v, p, k, r = ttk.Entry(f, width=7), ttk.Entry(f, width=12), ttk.Entry(f, width=17), ttk.Entry(f, width=17)
+            dig = ttk.Label(f, text="", width=8)
+            llega = ttk.Label(f, text="", width=9)
+            v, p, k, r = ttk.Entry(f, width=5), ttk.Entry(f, width=9), ttk.Entry(f, width=15), ttk.Entry(f, width=11)
             v.insert(0, d.variable_inicial.get(c.clave, 1))
             p.insert(0, d.prefijo_desc.get(c.clave, c.prefijo))
             k.insert(0, d.controlador.get(c.clave, c.controlador))
             r.insert(0, d.rele.get(c.clave, ""))
+            tb = ttk.Entry(f, width=9)                       # tablero del campo (se deduce: campo 103 -> TC1-03)
+            tb.insert(0, d.tablero.get(c.clave) or libro.tablero_defecto(c))
+            km = ttk.Entry(f, width=17)                      # controlador de las mediciones del campo (ej. 15203_MED)
+            km.insert(0, d.controlador_medicion.get(c.clave) or libro.controlador_medicion_defecto(c))
             cant = libro.cantidad(c)
-            widgets = (nivel, dig, ttk.Label(f, text=str(cant)), ttk.Label(f, text=str(libro.equipos(c))), v, llega, p, k, r)
+            widgets = (nivel, dig, ttk.Label(f, text=str(cant)), ttk.Label(f, text=str(libro.equipos(c))), v, llega, p, k, km, tb, r)
             for j, w in enumerate(widgets):
                 w.grid(row=fila, column=1 + j, pady=1, padx=2)
-            desc_e = ttk.Entry(f, width=24)
+            desc_e = ttk.Entry(f, width=18)
             desc_e.insert(0, d.descripcion.get(c.clave) or c.descripcion_base)
-            desc_e.grid(row=fila, column=10, pady=1, padx=2)
+            desc_e.grid(row=fila, column=12, pady=1, padx=2)
             med_v = tk.BooleanVar(value=d.mediciones.get(c.clave, bool(c.mediciones)))
             med_c = ttk.Checkbutton(f, variable=med_v)
-            med_c.grid(row=fila, column=11, pady=1, padx=2)
+            med_c.grid(row=fila, column=13, pady=1, padx=2)
             if hecho:
-                for w in (campo_e, nivel, v, p, k, r, desc_e):
+                for w in (campo_e, nivel, v, p, k, km, tb, r, desc_e):
                     w.configure(state="disabled")
                 med_c.configure(state="disabled")
             self.fila_campo[c.clave] = {"campo_e": campo_e, "nivel": nivel, "dig": dig, "var": v, "llega": llega, "pref": p, "ctl": k,
-                                        "rele": r, "campo": c, "cant": cant, "desc": desc_e, "med": med_v}
+                                        "ctl_med": km, "tablero": tb, "rele": r, "campo": c, "cant": cant, "desc": desc_e, "med": med_v}
             for e in (campo_e, nivel, v):
                 e.bind("<KeyRelease>", lambda _e, clave=c.clave: self._refrescar(clave))
             self._refrescar(c.clave)
@@ -164,6 +151,51 @@ class DialogoDatos(tk.Toplevel):
             self.placa_desde = ttk.Entry(f, width=10)
             self.placa_desde.grid(row=fila, column=2, columnspan=2, pady=(10, 0))
             ttk.Button(f, text="Numerar", command=self._numerar_placas).grid(row=fila, column=4, pady=(10, 0))
+
+        # --- Servicios auxiliares: SAA (alterna) / SAC (continua). Solo aparece si el plano trae esas alarmas.
+        self.sa_combos: dict[str, ttk.Combobox] = {}
+        self.sa_actual: dict[str, str | None] = {}
+        self.sa_recordar = tk.BooleanVar(value=True)
+        sa = libro.servicios_auxiliares()
+        self.pestana_sa = None
+        if sa:
+            sin = sum(1 for x in sa if x["campo"] is None)
+            f = ttk.Frame(nb, padding=8)
+            self.pestana_sa = f
+            nb.add(f, text="Servicios auxiliares" + (f"  (¡{sin} sin asignar!)" if sin else ""))
+            ttk.Label(f, wraplength=720, foreground="#555", text=(
+                "Las alarmas de servicios auxiliares van en SAA (alterna) o en SAC (continua). Ya sé la mayoría por lo que "
+                "contestaste antes o por el rótulo (Vca / Vcc). Las que no sé están marcadas en rosa: elegí a cuál va cada una.")
+            ).pack(anchor="w")
+            marco = ttk.Frame(f)
+            marco.pack(fill="both", expand=True, pady=6)
+            lienzo = tk.Canvas(marco, height=300, highlightthickness=0)
+            barra = ttk.Scrollbar(marco, orient="vertical", command=lienzo.yview)
+            interior = ttk.Frame(lienzo)
+            interior.bind("<Configure>", lambda _e: lienzo.configure(scrollregion=lienzo.bbox("all")))
+            lienzo.create_window((0, 0), window=interior, anchor="nw")
+            lienzo.configure(yscrollcommand=barra.set)
+            lienzo.pack(side="left", fill="both", expand=True)
+            barra.pack(side="right", fill="y")
+            for j, t in enumerate(("Alarma", "Hoja", "Campo", "De dónde sale")):
+                ttk.Label(interior, text=t, font=("", 9, "bold")).grid(row=0, column=j, padx=4, sticky="w")
+            etiqueta = {"SAA": "SAA (alterna)", "SAC": "SAC (continua)"}
+            fondo = self.cget("bg")
+            for i, x in enumerate(sa, start=1):
+                tk.Label(interior, text=x["texto"], anchor="w", width=42,
+                         bg="#f8c8dc" if x["campo"] is None else fondo).grid(row=i, column=0, padx=4, pady=1, sticky="w")
+                ttk.Label(interior, text=str(x["hoja"] or "")).grid(row=i, column=1, padx=4)
+                cb = ttk.Combobox(interior, values=list(etiqueta.values()), width=16, state="readonly")
+                if x["campo"]:
+                    cb.set(etiqueta[x["campo"]])
+                cb.grid(row=i, column=2, padx=4)
+                ttk.Label(interior, text={"usuario": "lo elegiste vos", "memoria": "lo contestaste antes",
+                                          "rótulo": "lo dice el rótulo", "sin asignar": "no lo sé: ¿cuál es?"}[x["fuente"]]
+                          ).grid(row=i, column=3, padx=4, sticky="w")
+                self.sa_combos[x["clave"]] = cb
+                self.sa_actual[x["clave"]] = x["campo"]
+            ttk.Checkbutton(f, variable=self.sa_recordar,
+                            text="Recordar mis respuestas para los próximos proyectos").pack(anchor="w")
 
         # --- Estados
         f = ttk.Frame(nb, padding=8)
@@ -204,10 +236,44 @@ class DialogoDatos(tk.Toplevel):
         self._cambia_default()
 
         b = ttk.Frame(self)
-        b.pack(fill="x", padx=8, pady=(0, 8))
+        b.pack(side="bottom", fill="x", padx=8, pady=(0, 8), before=nb)     # los botones siempre a la vista
         ttk.Button(b, text="Aceptar", command=self._aceptar).pack(side="right")
         ttk.Button(b, text="Cancelar", command=self.destroy).pack(side="right", padx=6)
+        if pestana == "servicios_auxiliares" and self.pestana_sa is not None:
+            nb.select(self.pestana_sa)
+        self._ajustar_a_la_pantalla()
         self.grab_set()
+
+    def _desplazable(self, nb: ttk.Notebook, texto: str) -> ttk.Frame:
+        """Pestaña con barras de desplazamiento: si el contenido no entra en la pantalla, se recorre."""
+        marco = ttk.Frame(nb)
+        nb.add(marco, text=texto)
+        lienzo = tk.Canvas(marco, highlightthickness=0, bg=tema.FONDO)
+        sy = ttk.Scrollbar(marco, orient="vertical", command=lienzo.yview)
+        sx = ttk.Scrollbar(marco, orient="horizontal", command=lienzo.xview)
+        interior = ttk.Frame(lienzo, padding=8)
+        lienzo.create_window((0, 0), window=interior, anchor="nw")
+        lienzo.configure(yscrollcommand=sy.set, xscrollcommand=sx.set)
+        interior.bind("<Configure>", lambda _e: lienzo.configure(scrollregion=lienzo.bbox("all")))
+        lienzo.bind("<MouseWheel>", lambda e: lienzo.yview_scroll(-1 * (e.delta // 120), "units"))
+        lienzo.bind("<Shift-MouseWheel>", lambda e: lienzo.xview_scroll(-1 * (e.delta // 120), "units"))
+        sy.pack(side="right", fill="y")
+        sx.pack(side="bottom", fill="x")
+        lienzo.pack(side="left", fill="both", expand=True)
+        self._lienzos.append((lienzo, interior))
+        return interior
+
+    def _ajustar_a_la_pantalla(self) -> None:
+        """Tamaño de la ventana: lo que pide el contenido, pero nunca más que el 90 % de la pantalla; centrada."""
+        self.update_idletasks()
+        pantalla_w, pantalla_h = self.winfo_screenwidth(), self.winfo_screenheight()
+        tope_w, tope_h = int(pantalla_w * 0.9) - 40, int(pantalla_h * 0.8) - 110      # menos barras, título y botones
+        for lienzo, interior in self._lienzos:
+            lienzo.configure(width=min(interior.winfo_reqwidth(), tope_w), height=min(interior.winfo_reqheight(), tope_h))
+        self.update_idletasks()
+        ancho = min(self.winfo_reqwidth(), int(pantalla_w * 0.92))
+        alto = min(self.winfo_reqheight(), int(pantalla_h * 0.85))
+        self.geometry(f"{ancho}x{alto}+{max(0, (pantalla_w - ancho) // 2)}+{max(0, (pantalla_h - alto) // 2 - 20)}")
 
     def _numerar_placas(self) -> None:
         """Rellena las placas vacías de a una, sumando 1 al último número (A4.2 -> A4.3)."""
@@ -289,6 +355,16 @@ class DialogoDatos(tk.Toplevel):
             d.prefijo_desc[k] = w["pref"].get().strip() or k
             d.controlador[k] = w["ctl"].get().strip()
             d.rele[k] = w["rele"].get().strip()
+            med = w["ctl_med"].get().strip()                  # solo se guarda si el usuario lo cambió
+            if med and med != self.libro.controlador_medicion_defecto(w["campo"]):
+                d.controlador_medicion[k] = med
+            else:
+                d.controlador_medicion.pop(k, None)
+            tab = w["tablero"].get().strip()                  # solo se guarda si el usuario lo cambió
+            if tab and tab != self.libro.tablero_defecto(w["campo"]):
+                d.tablero[k] = tab
+            else:
+                d.tablero.pop(k, None)
             texto = w["desc"].get().strip()
             if texto and texto != w["campo"].descripcion_base:
                 d.descripcion[k] = texto
@@ -296,6 +372,13 @@ class DialogoDatos(tk.Toplevel):
                 d.descripcion.pop(k, None)
             d.mediciones[k] = bool(w["med"].get())
         d.estilo = self.estilo.get() or estilo.ETAP
+        cambios = {}                                       # servicios auxiliares: solo lo que el usuario eligió o cambió
+        for clave, cb in self.sa_combos.items():
+            elegido = {"SAA (alterna)": "SAA", "SAC (continua)": "SAC"}.get(cb.get())
+            if elegido and elegido != self.sa_actual[clave]:
+                cambios[clave] = elegido
+        if cambios:
+            self.libro.asignar_sa(cambios, self.sa_recordar.get())
         d.estados = {}
         for clave, e in self.est_entry.items():
             partes = [p.strip() for p in e.get().split(",")]
@@ -315,19 +398,25 @@ class App(tk.Tk):
         self.cola: queue.Queue = queue.Queue()
         self.claves: dict[str, str] = {}            # fila de la tabla -> clave de fila (para guardar lo corregido a mano)
         self.editor: tk.Entry | None = None
-        barra = ttk.Frame(self, padding=6)
+        tema.aplicar(self)
+        self.minsize(900, 480)
+        # Barra de herramientas: pasos del trabajo a la izquierda (Calcular y Exportar resaltados), proyecto a la derecha.
+        barra = ttk.Frame(self, style="Barra.TFrame", padding=(10, 8))
         barra.pack(fill="x")
-        for texto, cmd in (("Agregar PDF…", self.agregar_pdf), ("Datos…", self.datos),
-                           ("Calcular", self.calcular), ("Exportar Excel…", self.exportar),
-                           ("Abrir proyecto…", self.abrir), ("Guardar proyecto…", self.guardar), ("Limpiar", self.limpiar)):
-            ttk.Button(barra, text=texto, command=cmd).pack(side="left", padx=3)
+        for texto, cmd, estilo_b in (("Agregar PDF…", self.agregar_pdf, "TButton"), ("Datos…", self.datos, "TButton"),
+                                     ("Calcular", self.calcular, "Accent.TButton"),
+                                     ("Exportar Excel…", self.exportar, "Accent.TButton")):
+            ttk.Button(barra, text=texto, command=cmd, style=estilo_b).pack(side="left", padx=(0, 6))
         self.por_offset = tk.BooleanVar(value=False)
         ttk.Checkbutton(barra, text="Ver por offset (reservas en su lugar)", variable=self.por_offset,
-                        command=self.mostrar).pack(side="left", padx=12)
+                        command=self.mostrar, style="Barra.TCheckbutton").pack(side="left", padx=14)
+        for texto, cmd in (("Limpiar", self.limpiar), ("Guardar proyecto…", self.guardar), ("Abrir proyecto…", self.abrir)):
+            ttk.Button(barra, text=texto, command=cmd).pack(side="right", padx=(6, 0))
+        ttk.Separator(self, style="Barra.TSeparator").pack(fill="x")
         self.estado = tk.StringVar(value="Cargá un PDF de ingeniería para empezar.")
-        ttk.Label(self, textvariable=self.estado, padding=(8, 0)).pack(fill="x")
+        ttk.Label(self, textvariable=self.estado, style="Estado.TLabel", anchor="w").pack(side="bottom", fill="x")
         self.pestanas = ttk.Notebook(self)
-        self.pestanas.pack(fill="both", expand=True, padx=6, pady=6)
+        self.pestanas.pack(fill="both", expand=True, padx=10, pady=(8, 6))
         self._armar_vista_campos()
         marco = ttk.Frame(self.pestanas)
         self.pestanas.add(marco, text="Listado")
@@ -335,8 +424,13 @@ class App(tk.Tk):
         for clave, titulo, ancho in COLUMNAS:
             self.tabla.heading(clave, text=titulo)
             self.tabla.column(clave, width=ancho, anchor="w")
+        tema.rayar(self.tabla)
+        tema.rayar(self.arbol_campos)
+        tema.rayar(self.arbol_senales)
         self.tabla.tag_configure("amarillo", background=AMARILLO)
         self.tabla.tag_configure("editado", background=VERDE)
+        for gravedad, color in avisos.COLORES.items():     # filas con avisos: celeste (contradice una regla) / rosa
+            self.tabla.tag_configure(gravedad, background=color)
         self.tabla.tag_configure("hueco", foreground="#888")
         self.tabla.bind("<Double-1>", self._editar)
         sb = ttk.Scrollbar(marco, orient="vertical", command=self.tabla.yview)
@@ -345,9 +439,24 @@ class App(tk.Tk):
         sb.pack(side="right", fill="y")
         sh.pack(side="bottom", fill="x")
         self.tabla.pack(side="left", fill="both", expand=True)
+        self.iid_de_id: dict[int, str] = {}                # id de la señal en la base -> fila de la tabla
+        self.avisos_excel: list = []                       # lo que encontró la verificación del último Excel exportado
+        self.formato_elegido: str = FORMATO_EXCEL          # el completo pide conexionado (tablero, bornera, borne)
+        self.pestana_avisos = avisos_ui.PestanaAvisos(self.pestanas, self.ir_a_senal)
+        self.pestanas.add(self.pestana_avisos, text="Avisos")
         self.pestana_caratula = caratula_ui.PestanaCaratula(self.pestanas, self.libro.perfil)
         self.pestanas.add(self.pestana_caratula, text="Carátula")
         self.after(100, self._cola)
+
+    def ir_a_senal(self, ids: tuple[int, ...]) -> None:
+        """Desde un aviso: muestra la fila de la primera señal a la que se refiere."""
+        iid = next((self.iid_de_id[i] for i in ids if i in self.iid_de_id), None)
+        if iid is None:
+            return
+        self.pestanas.select(1)
+        self.tabla.selection_set(iid)
+        self.tabla.focus(iid)
+        self.tabla.see(iid)
 
     # ---------------------------------------------------------- vista previa de lo leído
     def _armar_vista_campos(self):
@@ -361,8 +470,8 @@ class App(tk.Tk):
         panel.add(izq, weight=1)
         self.arbol_campos = ttk.Treeview(izq, columns=("campo", "nivel", "n", "res", "hojas"), show="headings",
                                          selectmode="browse")
-        for clave, titulo, ancho in (("campo", "CAMPO", 60), ("nivel", "TENSIÓN", 65), ("n", "SEÑALES", 65),
-                                     ("res", "RESERVAS", 70), ("hojas", "HOJAS DEL PDF", 120)):
+        for clave, titulo, ancho in (("campo", "CAMPO", 70), ("nivel", "TENSIÓN", 85), ("n", "SEÑALES", 85),
+                                     ("res", "RESERVAS", 90), ("hojas", "HOJAS DEL PDF", 130)):
             self.arbol_campos.heading(clave, text=titulo)
             self.arbol_campos.column(clave, width=ancho, anchor="w")
         self.arbol_campos.pack(fill="both", expand=True)
@@ -476,16 +585,22 @@ class App(tk.Tk):
                 if repetidos:
                     msg += f" Ya estaban y se ignoraron: {', '.join(repetidos)}."
                 self.estado.set(msg + " Completá «Datos…» y tocá «Calcular».")
+                sin = [x for x in self.libro.servicios_auxiliares() if x["campo"] is None]
+                if sin and messagebox.askyesno(          # solo pregunta si hay algo que no sabe
+                        "Servicios auxiliares",
+                        f"Hay {len(sin)} alarmas de servicios auxiliares que no sé si son de alterna (SAA) o de continua "
+                        "(SAC). Hasta que las asignes quedan en SAA.\n\n¿Las asignás ahora?"):
+                    self.datos("servicios_auxiliares")
         except queue.Empty:
             pass
         self.after(100, self._cola)
 
     # ---------------------------------------------------------- datos y cálculo
-    def datos(self) -> bool:
+    def datos(self, pestana: str | None = None) -> bool:
         if not self.libro.campos:
             messagebox.showinfo("Datos", "Primero agregá un PDF.")
             return False
-        d = DialogoDatos(self, self.libro)
+        d = DialogoDatos(self, self.libro, pestana)
         self.wait_window(d)
         return d.resultado
 
@@ -522,37 +637,58 @@ class App(tk.Tk):
         proyecto, marcas, huecos = self.libro.proyecto()
         marcas = self.libro.marcas(proyecto, marcas)
         claves = desde_pdf.claves_de(proyecto)
+        lista = self.calcular_avisos()                # validaciones sobre la base: solo informan
+        gravedad_de: dict[int, str] = {}              # señal -> color de su fila (el celeste gana al rosa)
+        for a in lista:
+            if a.codigo in SIN_COLOR_EN_FILA:
+                continue
+            for n in a.ids:
+                if gravedad_de.get(n) != avisos.CELESTE:
+                    gravedad_de[n] = a.gravedad
+        self.iid_de_id = {}
         i = 0
-        filas = []                                   # [campo, nivel, descrip, senal, amarilla, libre, item, clave]
+        filas = []                                   # [campo, nivel, descrip, senal, amarilla, libre, item, clave, posición]
         item = self.libro.datos.item_inicial
         for nivel in proyecto.niveles:
             for campo in nivel.campos:
                 for s in campo.senales:
-                    filas.append([campo.numero, nivel.nombre, campo.descripcion, s, marcas[i], huecos[i], None, claves[i]])
+                    filas.append([campo.numero, nivel.nombre, campo.descripcion, s, marcas[i], huecos[i], None, claves[i], i])
                     if not huecos[i]:
                         filas[-1][6], item = item, item + 1
                     i += 1
         if self.por_offset.get():
             filas = self._por_offset(filas)
-        amarillas = 0
         editadas = self.libro.datos.ediciones
-        for campo, nivel, descrip, s, amarilla, libre, nro, clave in filas:
-            vals = [nro, nivel, descrip, s.controlador, s.funcion.value, s.tag_hmi, s.desc_hmi, s.tag_scada, s.offset,
+        for campo, nivel, descrip, s, amarilla, libre, nro, clave, pos in filas:
+            vals = [nro, nivel, descrip, s.controlador, s.funcion.value, s.tag_hmi, s.desc_hmi, s.tag_scada,
+                    None if libre else s.offset,                 # las filas libres van vacías (sin OFFSET)
                     s.desc_scada, s.s0, s.s1, s.s2, s.s3, s.unidad,
                     s.tipo_punto.value if s.tipo_punto else "", s.placa, s.entrada, s.observaciones]
             vals = vals[:len(COLUMNAS)]
             tags = ()
-            if clave in editadas:
+            if gravedad_de.get(pos + 1):                      # celeste: contradice una regla / rosa: falta información
+                tags = (gravedad_de[pos + 1],)
+            elif clave in editadas:
                 tags = ("editado",)
-            elif amarilla:
-                tags, amarillas = ("amarillo",), amarillas + 1
             elif libre or s.es_reserva:
                 tags = ("hueco",)
+            if not tags or tags == ("hueco",):
+                tags += ("raya",) if len(self.claves) % 2 else ()
             iid = self.tabla.insert("", "end", values=["" if v is None else v for v in vals], tags=tags)
             self.claves[iid] = clave
+            self.iid_de_id[pos + 1] = iid                     # la señal i de la base es la fila i + 1
         corregidas = sum(len(e) for e in editadas.values())
-        self.estado.set(f"{len(filas)} filas, {amarillas} descripciones en amarillo (a revisar), "
+        celestes = sum(1 for a in lista if a.gravedad == avisos.CELESTE)
+        self.estado.set(f"{len(filas)} filas · {celestes} avisos celestes y {len(lista) - celestes} rosas (pestaña Avisos) · "
                         f"{corregidas} celdas corregidas a mano (verde). Doble clic en una celda para corregirla.")
+
+    def calcular_avisos(self) -> list:
+        """Corre las validaciones sobre la base y las muestra en la pestaña «Avisos». No modifica nada."""
+        db = self.libro.base()
+        lista = avisos.validar(db, self.libro.perfil, avisos_de_lectura=self.libro.avisos,
+                               pide_conexionado=self.formato_elegido == "completo") + self.avisos_excel
+        self.pestana_avisos.mostrar(lista)
+        return lista
 
     # ---------------------------------------------------------- corrección a mano
     def _cerrar_editor(self):
@@ -640,20 +776,25 @@ class App(tk.Tk):
                                      + "\n• ".join(problemas) + "\n\nCorregilos en la pestaña «Carátula».")
                 self.pestanas.select(self.pestana_caratula)
                 return
-        d = DialogoFormato(self, "completo" if self.libro.datos.estilo == estilo.USRE else "reducido")
-        self.wait_window(d)
-        if d.elegido is None:
-            return
         ruta = filedialog.asksaveasfilename(title="Guardar Excel", defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")])
         if not ruta:
             return
+        db = self.libro.base(car)
         try:
-            n = self.libro.exportar_formato(d.elegido, ruta, car)
+            n = self.libro.exportar_formato(FORMATO_EXCEL, ruta, car, db=db)
         except PermissionError:
             messagebox.showerror("Exportar", "No pude escribir el archivo. ¿Está abierto en Excel?")
             return
-        messagebox.showinfo("Exportar", f"Listo: {ruta}\nFormato {d.elegido}. {'Con' if car else 'Sin'} carátula.\n"
-                                        f"Descripciones en amarillo: {n}")
+        # verificación: el Excel recién escrito se lee de nuevo y se compara con la base (solo informa)
+        self.avisos_excel = aviso_excel.verificar(db, formatos.cargar(FORMATO_EXCEL), ruta)
+        self.mostrar()                                    # refresca colores y la pestaña Avisos
+        texto = f"Listo: {ruta}\n{'Con' if car else 'Sin'} carátula.\nDescripciones a revisar: {n}"
+        if self.avisos_excel:
+            messagebox.showwarning("Exportar", texto + f"\n\nOjo: el Excel no coincide con la base en "
+                                   f"{len(self.avisos_excel)} celdas. Mirá la pestaña «Avisos».")
+            self.pestanas.select(self.pestana_avisos)
+        else:
+            messagebox.showinfo("Exportar", texto + "\n\nVerificado: el Excel coincide con la base.")
 
     def guardar(self):
         """Guarda el proyecto (.json): PDFs, datos, celdas corregidas y carátula."""

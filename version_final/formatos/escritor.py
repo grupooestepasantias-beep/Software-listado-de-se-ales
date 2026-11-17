@@ -27,7 +27,9 @@ _MEDICION = "MEDICION"
 
 def valor(campo: str, b: SenalBase):
     """Valor de una columna para una señal. Vacío -> None (la celda queda en blanco)."""
-    if campo == "item":
+    if b.es_hueco and campo in ("item", "offset", "indice_dnp"):
+        v = None                         # fila libre: vacía (el contador de offsets la salta, pero no la numera)
+    elif campo == "item":
         v = b.item
     elif campo == "descrip":
         v = b.descripcion_campo

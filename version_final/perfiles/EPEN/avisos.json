@@ -1,0 +1,10 @@
+{
+  "_nota": "Reglas de las validaciones del listado (paquete avisos/). Salen de LINEAMIENTOS (Reglas\\LISTADO DE SEÑALES-LINEAMIENTOS-Epen.pdf, página 2) y de lo que dijo el usuario. Una advertencia nunca modifica un dato: solo informa.",
+  "campos_especiales": ["TP1", "TP2", "RN1", "RN2", "SAA", "SAC"],
+  "codigos_medicion": ["AR", "AS", "AT", "AU", "AV", "AW", "AF", "AFP", "AP", "AQ", "VP", "IP"],
+  "largo_desc_scada": 20,
+  "_tag": "TAG digital = {nivel+campo}.{variable 00-99}{bits 1|2}[C]; medición = {nivel+campo}.{NN}{código}. Nivel+campo = 3 dígitos (ej. 101) o un campo especial.",
+  "offset_repetido_valido": {
+    "_": "Un OFFSET puede repetirse entre una señal y su comando, y entre una señal digital y una medición (contadores aparte). Dos señales digitales distintas con el mismo offset, o dos mediciones, no."
+  }
+}

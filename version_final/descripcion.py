@@ -23,13 +23,17 @@ def _sin_acentos(t: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
 
 
-def _limpiar(texto: str) -> str:
+def _limpiar(texto: str, conservar_kv: bool = False) -> str:
     t = _sin_acentos(texto).replace("�", "").lower()
     t = re.sub(r"\bcampo\s*\d+\b", " ", t)                         # el campo ya va en el prefijo
-    t = re.sub(r"\b\d+(?:[.,]\d+)?\s*kv\b", " ", t)                 # nivel de tensión
+    if conservar_kv:                                                # campo especial (SAA, SAC, TP1…): su prefijo no dice la
+        t = re.sub(r"\b(\d+)(?:[.,]\d+)?\s*kv\b", r"\1", t)         # tensión y el rótulo sí («comando 33 KV» / «13,2 KV»)
+    else:
+        t = re.sub(r"\b\d+(?:[.,]\d+)?\s*kv\b", " ", t)             # nivel de tensión: ya va en el prefijo
     t = re.sub(r"\b\d{4,5}\b", " ", t)                              # número de equipo (25204)
     t = re.sub(r"\b\d{2,3}[a-z]{0,2}/\d{2}\b", " ", t)              # código de equipo (152/01, 189t/03)
     t = re.sub(r"\.", " ", t).replace("-", " ")
+    t = re.sub(r"(\d)\s+(vc[ac])\b", r"\1\2", t)                    # «110 Vcc» -> «110vcc» (así lo escribe el Excel oficial)
     return re.sub(r"\s+", " ", t).strip()
 
 
@@ -37,9 +41,9 @@ def _equipo(m: re.Match, barras: dict) -> str:
     return barras.get(m.group(1), m.group(1)).upper()
 
 
-def abreviar(texto: str) -> str:
+def abreviar(texto: str, conservar_kv: bool = False) -> str:
     v = vocabulario()
-    t = _limpiar(texto)
+    t = _limpiar(texto, conservar_kv)
     # Seccionador 229SB04 -> "seccionador BB": el código SA/SB/SL dice qué seccionador es.
     t = re.sub(r"\b\d{3}(s[abl])\d{2}\b", lambda m: "@" + _equipo(m, v["barras"]), t)
     for frase in sorted(v["frases"], key=len, reverse=True):
@@ -65,7 +69,7 @@ def _sin_vocales(palabra: str) -> str:
 
 def descripcion_scada(prefijo: str, texto: str) -> tuple[str, bool]:
     """Prefijo + texto abreviado, en MAYÚSCULAS y de máximo 20 caracteres."""
-    cuerpo = abreviar(texto)
+    cuerpo = abreviar(texto, conservar_kv=not prefijo[:1].isdigit())
     completo = f"{prefijo} {cuerpo}".strip().upper()
     if len(completo) <= MAXIMO:
         return completo, True

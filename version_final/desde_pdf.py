@@ -12,6 +12,7 @@ from pathlib import Path
 
 import openpyxl
 from openpyxl.styles import PatternFill
+from openpyxl.utils import column_index_from_string
 
 import descripcion
 import estados as est
@@ -32,6 +33,37 @@ COLUMNAS_UTR = ("tipo", "placa", "entrada", "obs")
 EDITABLES = {"ctl": "controlador", "taghmi": "tag_hmi", "deschmi": "desc_hmi", "tag": "tag_scada", "offset": "offset",
              "desc": "desc_scada", "k": "s0", "l": "s1", "m": "s2", "n": "s3", "o": "unidad", "tipo": "tipo_punto",
              "placa": "placa", "entrada": "entrada", "obs": "observaciones"}
+
+
+def campo_de_modulo(clave_campo: str, cfg: dict) -> str:
+    """Clave del campo con la que se identifica un módulo de E/S. Un módulo del TDCI reparte sus señales entre SAA y SAC,
+    pero es uno solo: se lo identifica siempre con el campo del que se leyó (SAA)."""
+    sa = cfg.get("servicios_auxiliares")
+    return sa["campo_alterna"] if sa and clave_campo == sa["campo_continua"] else clave_campo
+
+
+def controlador_medicion_defecto(campo, cfg: dict, usre: bool) -> str:
+    """Controlador de las mediciones de un campo si el usuario no escribió otro: el multimedidor del perfil (ETAP) o
+    `SATEC - PM335_<tensión>` (USRE). En «Datos…» se puede cambiar por campo (ej. `15203_MED`)."""
+    if usre:
+        return f"SATEC - PM335_{pdf_plano.tension_texto(campo.nivel)}"
+    return cfg["mediciones"]["controlador"]
+
+
+def tablero_defecto(campo, cfg: dict) -> str:
+    """Tablero de un campo si el usuario no escribió otro: TC + dígito del nivel + guion + campo (campo 103 -> TC1-03); los
+    servicios auxiliares van en el tablero del plano que los trae (TDCI). Vacío si no se puede deducir (ej. TP1)."""
+    t = cfg.get("tablero")
+    if not t:
+        return ""
+    sa = cfg.get("servicios_auxiliares")
+    if sa and campo.clave in (sa["campo_alterna"], sa["campo_continua"]):
+        return t["servicios_auxiliares"]
+    numero = campo.numero or campo.numero_pdf
+    if numero.isdigit():
+        digito = pdf_plano.codigo_nivel(campo.nivel, cfg)
+        return t["campo_numerico"].format(nivel=digito, campo=int(numero)) if digito else ""
+    return ""
 
 
 def clave_fila(nivel: str, campo: str, funcion: str, n: int) -> str:
@@ -211,7 +243,7 @@ def a_proyecto(filas, campos, datos, perfil=None):
         """Placa del módulo: la que eligió el usuario (si el plano no la trae) o la del plano."""
         if ls is None or not getattr(ls, "tipo", ""):
             return ""
-        return datos.placas.get(f"{clave_campo}|{ls.pagina}|{ls.modulo}|{ls.tipo}") or ls.placa
+        return datos.placas.get(f"{campo_de_modulo(clave_campo, cfg)}|{ls.pagina}|{ls.modulo}|{ls.tipo}") or ls.placa
 
     def entrada_de(ls, estado=0, par=False):
         """Entrada (DI/AI) o salida (DO) del módulo. `estado` = 0/1 en una señal doble (cada fila, su propio borne);
@@ -222,6 +254,10 @@ def a_proyecto(filas, campos, datos, perfil=None):
         if par:
             return "/".join(str(x) for x in e)
         return str(e[min(estado, len(e) - 1)])      # una sola entrada para dos estados ('en local'/'en remoto'): la misma
+
+    def tablero_de(prefijo_campo):
+        """Tablero del campo: el que escribió el usuario en «Datos…» o el deducido (TC1-03, TDCI…)."""
+        return getattr(datos, "tablero", {}).get(clave[prefijo_campo]) or tablero_defecto(meta[prefijo_campo], cfg)
 
     modo = getattr(datos, "estilo", "") or estilo.ETAP
     usre = modo == estilo.USRE
@@ -275,7 +311,11 @@ def a_proyecto(filas, campos, datos, perfil=None):
                 if i < len(m):
                     tag_hmi, desc_hmi, ctl = m[i].tag_hmi, m[i].desc_hmi, m[i].controlador
                     if usre:
-                        ctl = f"SATEC - PM335_{pdf_plano.tension_texto(c.nivel)}"
+                        ctl = controlador_medicion_defecto(c, cfg, usre)
+                        # estilo USRE: la DESC. HMI va sin el prefijo del campo y con tilde en TENSIÓN (Excel oficial)
+                        desc_hmi = m[i].desc_hmi.removeprefix(f"{pref} ").replace("TENSION", "TENSIÓN")
+                    # lo que el usuario escribió en «Datos… → Controlador (medición)» manda sobre el del estilo
+                    ctl = getattr(datos, "controlador_medicion", {}).get(clave[f.campo]) or ctl
                     obs_u = cfg["mediciones"]["juego"][i].format(campo=c.numero, tension=pdf_plano.tension_texto(c.nivel)).strip()
                 tipo_u, placa_u, entrada_u = "AI", "N/A", "N/A"     # multimedidor: no entra por un módulo de la UTR
             else:
@@ -308,7 +348,8 @@ def a_proyecto(filas, campos, datos, perfil=None):
                       offset=f.offset, desc_scada=desc, segunda_fila=f.extra,
                       s0=valores[0], s1=valores[1], s2=valores[2], s3=valores[3], unidad=valores[4],
                       tipo_punto=TipoPunto(tipo_u) if tipo_u in ("DI", "DO", "AI", "AO") else None,
-                      placa=placa_u, entrada=entrada_u, observaciones=obs_u)
+                      placa=placa_u, entrada=entrada_u, observaciones=obs_u,
+                      tablero="" if f.hueco else tablero_de(f.campo))
             if f.senal is not None and f.senal.origen is not None:           # de qué hoja de qué PDF salió
                 s.hoja = getattr(f.senal.origen, "pagina", None)
                 s.archivo = meta[f.campo].archivos[0] if meta[f.campo].archivos else ""
@@ -331,7 +372,7 @@ def a_proyecto(filas, campos, datos, perfil=None):
                 s0=est.NA, s1=est.NA, s2=est.NA, s3=est.NA, unidad=est.NA,
                 tipo_punto=TipoPunto(ori.tipo) if tiene and ori.tipo in ("DI", "DO", "AI", "AO") else None,
                 placa=placa_de(ori, clave[f.campo]) if tiene else "", entrada=entrada_de(ori, 0) if tiene else "",
-                observaciones="RESERVA"))
+                observaciones="RESERVA", tablero=tablero_de(f.campo)))
     niveles_res: dict[str, Nivel] = {}
     for c in campos:
         if c.prefijo in reservas_por:
@@ -398,10 +439,12 @@ def escribir_proyecto(proyecto, marcas, huecos, item_inicial, ruta, perfil, cara
     wb = openpyxl.load_workbook(ruta)
     ws = wb[perfil.datos["hojas"]["listado"]]
     item = item_inicial
+    col_offset = next(column_index_from_string(c["letra"]) for c in perfil.columnas if c["clave"] == "offset")
     for i, (m, hueco) in enumerate(zip(marcas, huecos)):
         fila = primera + i
         if hueco:
             ws.cell(fila, 1).value = None          # las filas libres (futuras ampliaciones) no llevan ITEM
+            ws.cell(fila, col_offset).value = None  # ni OFFSET: son filas vacías (el contador sí las salta)
         else:
             ws.cell(fila, 1).value = item
             item += 1

@@ -55,10 +55,9 @@ class ProyectoDB:
                         tag_scada=s.tag_scada, offset=s.offset, desc_scada=s.desc_scada, unidad=s.unidad,
                         tipo_senal=s.tipo_punto.value if s.tipo_punto else "", placa=s.placa, entrada=s.entrada,
                         observaciones=s.observaciones, segunda_fila=s.segunda_fila, es_reserva=s.es_reserva,
-                        es_hueco=huecos[i], sin_resolver=marcas[i], hoja=s.hoja, archivo=s.archivo)
+                        es_hueco=huecos[i], sin_resolver=marcas[i], hoja=s.hoja, archivo=s.archivo, tablero=s.tablero)
                     for viejo, nuevo in _ESCALAS.items():          # K-N: estados o escalas según la función
                         setattr(b, nuevo if es_medicion else viejo, getattr(s, viejo))
-                    b.indice_dnp = s.offset                        # regla del usuario (2026-11-13): índice DNP = OFFSET
                     if not huecos[i]:
                         b.item, item = item, item + 1
                     b.completar_origen()
@@ -98,7 +97,7 @@ class ProyectoDB:
                       tag_scada=b.tag_scada, offset=b.offset, desc_scada=b.desc_scada, unidad=b.unidad,
                       tipo_punto=TipoPunto(b.tipo_senal) if _valido(b.tipo_senal) else None, placa=b.placa,
                       entrada=b.entrada, observaciones=b.observaciones, segunda_fila=b.segunda_fila,
-                      es_reserva=b.es_reserva, hoja=b.hoja, archivo=b.archivo)
+                      es_reserva=b.es_reserva, hoja=b.hoja, archivo=b.archivo, tablero=b.tablero)
             for viejo, nuevo in _ESCALAS.items():
                 setattr(s, viejo, getattr(b, nuevo if es_medicion else viejo))
             campo.senales.append(s)

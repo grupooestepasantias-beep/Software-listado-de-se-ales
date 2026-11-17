@@ -93,14 +93,25 @@ class TestSalidas(unittest.TestCase):
         self.assertEqual([f[:6] for f in red], [f[:6] for f in com])
         self.assertEqual([f[6:15] for f in red], [f[7:16] for f in com])
 
-    def test_externalname_vacio_conexionado_vacio_y_dnp_igual_al_offset(self):
+    def test_externalname_conexionado_y_dnp_salen_vacios(self):
         c = self.com
         filas = range(5, c.max_row + 1)
         self.assertTrue(all(c.cell(r, 7).value is None for r in filas))                   # G: EXTERNAL NAME
-        for letra in ("R", "V", "W", "Y", "Z"):                                           # tablero, bornera, borne
+        for letra in ("V", "W", "Y", "Z", "AA"):                                          # bornera, borne, DNP
             self.assertTrue(all(c[f"{letra}{r}"].value is None for r in filas), letra)
-        self.assertEqual([c.cell(r, 27).value for r in filas], [c.cell(r, 10).value for r in filas])   # AA = J
-        self.assertTrue(any(c.cell(r, 27).value is not None for r in filas))
+        self.assertEqual({c[f"R{r}"].value for r in filas} - {None}, {"TC2-04", "TC2-05", "TC2-06"})   # tablero deducido por campo
+
+    def test_las_filas_libres_salen_sin_offset_ni_item(self):
+        libres = [r for r in range(5, self.com.max_row + 1) if self.com.cell(r, 5).value is None
+                  and all(self.com.cell(r, k).value is None for k in (1, 6, 9, 11))]    # vacías de ITEM, tags y descripción
+        self.assertTrue(libres)
+        self.assertTrue(all(self.com.cell(r, 10).value is None for r in libres))         # …y de OFFSET
+        # el contador sigue saltándolas: los offsets de las filas con datos no son consecutivos
+        con_offset = [self.com.cell(r, 10).value for r in range(5, self.com.max_row + 1) if self.com.cell(r, 10).value is not None]
+        self.assertTrue(any(b - a > 1 for a, b in zip(con_offset, con_offset[1:])))
+        for ws, col in ((self.red, 9), (self.directo, 9)):                                # el reducido y el directo igual
+            hay_vacias = [r for r in range(6, ws.max_row + 1) if ws.cell(r, 1).value is None and ws.cell(r, 6).value is None]
+            self.assertTrue(all(ws.cell(r, col).value is None for r in hay_vacias))
 
     def test_el_completo_no_fija_paneles(self):
         self.assertIsNone(self.com.freeze_panes)
@@ -120,7 +131,7 @@ class TestSalidas(unittest.TestCase):
             ws = openpyxl.load_workbook(Path(t) / "x.xlsx").active
         primera = next(b for b in self.db.senales if b.tag_scada not in ("", "N/A") and not b.es_hueco)
         valores = [[ws.cell(r, c).value for c in (1, 2, 3)] for r in range(6, ws.max_row + 1)]
-        self.assertIn([primera.tag_scada, primera.offset, primera.indice_dnp], valores)
+        self.assertIn([primera.tag_scada, primera.offset, None], valores)
 
     def test_con_caratula_el_libro_lleva_dos_hojas_en_cualquier_formato(self):
         for fid in ("reducido", "completo"):

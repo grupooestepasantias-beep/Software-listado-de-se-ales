@@ -1,0 +1,33 @@
+{
+ "_nota": "Lo que el usuario contestó sobre a qué campo de servicios auxiliares pertenece cada alarma: SAA (alterna) o SAC (continua). La app lo usa en todos los proyectos y agrega acá lo que se conteste en «Datos…». Primeras 24 respuestas: 2026-11-16, hoja 18 del TDCI USRE-01-19-SET-Ct-PL-Ad-0808_r4.",
+ "decisiones": {
+  "alarma incendio": "SAC",
+  "alarma intruso": "SAC",
+  "alarma movimiento": "SAC",
+  "alimentacion cargador de baterias": "SAC",
+  "alimentacion de inversor": "SAC",
+  "alimentacion reconectadores": "SAC",
+  "alimentacion tableros": "SAC",
+  "alimentacion trans potencia tpo1 rbc": "SAA",
+  "falta alimentacion inversor": "SAC",
+  "falta tension alimentacion mgeac": "SAC",
+  "falta tension comando 13 2 kv": "SAC",
+  "falta tension comando 33 kv": "SAC",
+  "falta tension exploracion 13 2 kv": "SAC",
+  "falta tension exploracion 33 kv": "SAC",
+  "falta tension exploracion mgeac": "SAC",
+  "falta tension fuerza motriz 13 2 kv": "SAC",
+  "falta tension fuerza motriz 33 kv": "SAC",
+  "falta tension general alarmas": "SAC",
+  "falta tension iluminacion emergencia": "SAA",
+  "falta tension power injector 1": "SAC",
+  "falta tension power injector 2": "SAC",
+  "falta tension senaliza gral": "SAA",
+  "falta tension tab tcom": "SAA",
+  "falta tension tableros med y prot": "SAC",
+  "iluminacion columna a p": "SAA",
+  "iluminacion playa": "SAA",
+  "interruptor ppal 220vca seg abierto": "SAC",
+  "tablero seccional de shelter": "SAA"
+ }
+}

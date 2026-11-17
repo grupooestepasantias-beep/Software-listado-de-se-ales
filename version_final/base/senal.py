@@ -22,8 +22,8 @@ FUENTE_POR_DEFECTO = {
     "controlador": REGLA, "tag_hmi": PDF, "desc_hmi": PDF, "tag_scada": REGLA, "offset": REGLA, "desc_scada": REGLA,
     "s0": REGLA, "s1": REGLA, "s2": REGLA, "s3": REGLA,
     "min_raw": REGLA, "max_raw": REGLA, "min_eu": REGLA, "max_eu": REGLA, "unidad": REGLA,
-    "tipo_senal": PDF, "tablero": PDF, "placa": PDF, "entrada": PDF, "bornera_tablero": PDF, "borne_tablero": PDF,
-    "bornera_equipo": PDF, "borne_equipo": PDF, "indice_dnp": REGLA, "observaciones": PDF,
+    "tipo_senal": PDF, "tablero": REGLA, "placa": PDF, "entrada": PDF, "bornera_tablero": PDF, "borne_tablero": PDF,
+    "bornera_equipo": PDF, "borne_equipo": PDF, "indice_dnp": PDF, "observaciones": PDF,
 }
 
 
@@ -67,7 +67,7 @@ class SenalBase:
     borne_tablero: str = ""
     bornera_equipo: str = ""
     borne_equipo: str = ""
-    indice_dnp: Valor = None          # INDICE DNP CCO: por ahora el mismo número que el OFFSET (regla del usuario, 2026-11-13)
+    indice_dnp: Valor = None          # INDICE DNP CCO: solo una columna; queda vacía hasta que el usuario defina qué es
     observaciones: str = ""
     # --- estado de la fila
     segunda_fila: bool = False        # 2.ª fila de una señal de doble bit

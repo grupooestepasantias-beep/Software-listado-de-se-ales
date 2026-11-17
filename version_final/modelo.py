@@ -105,6 +105,7 @@ class Senal:
     placa: str = NA
     entrada: str = NA
     observaciones: str = ""
+    tablero: str = ""                     # tablero donde está la señal (ej. "TC1-03"); columna TABLERO del formato completo
     # Datos de apoyo para el generador (no son columnas del Excel)
     estado_id: Optional[str] = None       # id en estados.json del perfil
     medicion_codigo: Optional[str] = None  # sufijo de medición (AR, AU, AP...)

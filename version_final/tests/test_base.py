@@ -102,23 +102,20 @@ class TestBaseDesdeElPlano(unittest.TestCase):
     def test_origen_de_los_datos(self):
         b = next(x for x in self.db.senales if x.tag_scada not in ("", "N/A") and x.funcion == "ALARMAS")
         self.assertEqual((b.fuente_de("tag_scada"), b.fuente_de("offset"), b.fuente_de("tag_hmi")), (REGLA, REGLA, PDF))
-        self.assertEqual(b.fuente_de("tablero"), "")                    # lo que no hay no tiene fuente
+        self.assertEqual(b.fuente_de("tablero"), REGLA)                 # el tablero se deduce (TC2-04, TDCI…)
+        self.assertEqual(b.fuente_de("bornera_tablero"), "")            # lo que no hay no tiene fuente
 
-    def test_el_indice_dnp_es_el_offset_y_el_conexionado_nuevo_queda_vacio(self):
-        self.assertTrue(all(b.indice_dnp == b.offset for b in self.db.senales))
-        self.assertTrue(any(b.indice_dnp is not None for b in self.db.senales))
-        self.assertEqual(self.db.senales[0].fuente_de("indice_dnp"), REGLA)
-        self.assertTrue(all(not b.tablero and not b.borne_equipo and not b.bornera_tablero for b in self.db.senales))
+    def test_el_indice_dnp_y_el_conexionado_pendiente_quedan_vacios(self):
+        self.assertTrue(all(b.indice_dnp is None for b in self.db.senales))      # solo una columna, sin datos
+        self.assertTrue(all(not b.borne_equipo and not b.bornera_equipo and not b.bornera_tablero and not b.borne_tablero
+                            for b in self.db.senales))
+        self.assertTrue(any(b.tablero for b in self.db.senales))                  # el tablero sí se deduce
 
-    def test_el_indice_dnp_sigue_al_offset_corregido_a_mano(self):
-        proyecto, _, _ = self.L.proyecto()
-        clave = desde_pdf.claves_de(proyecto)[0]
-        self.L.editar(clave, "offset", "999")
-        try:
-            b = self.L.base().senales[0]
-            self.assertEqual((b.offset, b.indice_dnp), (999, 999))
-        finally:
-            self.L.deshacer_edicion(clave, "offset")
+    def test_las_filas_libres_conservan_su_offset_en_la_base_aunque_no_se_muestre(self):
+        libres = [b for b in self.db.senales if b.es_hueco]
+        self.assertTrue(libres)
+        self.assertTrue(all(b.offset is not None for b in libres))              # el contador las salta…
+        self.assertTrue(all(b.item is None for b in libres))                    # …pero no llevan ITEM
 
     def test_lo_corregido_a_mano_figura_como_manual(self):
         proyecto, _, _ = self.L.proyecto()

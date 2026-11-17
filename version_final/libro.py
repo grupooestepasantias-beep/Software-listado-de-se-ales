@@ -1,6 +1,7 @@
 """Estado del listado SCADA: PDFs cargados, datos que se preguntan y filas numeradas. Sin interfaz (la usa app_scada.py)."""
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import tempfile
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import desde_pdf
 import estilo
+import hmi
 import numeracion as num
 from base import VERSION, ProyectoDB
 import pdf_plano
@@ -43,6 +45,14 @@ class Datos:
     estilo: str = ""                                                 # ETAP o USRE (vacío = se detecta por el nombre del PDF)
     mediciones: dict[str, bool] = field(default_factory=dict)        # por campo: ¿lleva las 13 mediciones?
     descripcion: dict[str, str] = field(default_factory=dict)        # por campo: texto de DESCRIP si se corrige (ej. "Entrada TR01")
+    reparto_sa: dict[str, str] = field(default_factory=dict)         # servicios auxiliares: rótulo normalizado -> "SAA" o "SAC"
+    controlador_medicion: dict[str, str] = field(default_factory=dict)   # por campo: controlador de sus mediciones si se cambia
+    tablero: dict[str, str] = field(default_factory=dict)            # por campo: tablero si se cambia (ej. "TC1-03")
+
+
+def clave_sa(texto: str) -> str:
+    """Rótulo normalizado para recordar a qué campo de servicios auxiliares pertenece (sin tildes, minúsculas, sin signos)."""
+    return re.sub(r"[^a-z0-9]+", " ", hmi.sin_acentos(texto).lower()).strip()
 
 
 class Libro:
@@ -56,6 +66,8 @@ class Libro:
         self.datos = Datos()
         self.avisos: list[str] = []
         self.ultimo_info: dict = {}      # estadísticas de la última lectura (para explicar un PDF sin señales)
+        self._sa_orden: list = []        # señales de servicios auxiliares en el orden del PDF (para repartirlas SAA/SAC)
+        self.memoria_sa: dict[str, str] = self._leer_memoria_sa()
 
     # ------------------------------------------------------------ carga
     @staticmethod
@@ -108,15 +120,103 @@ class Libro:
             previo.archivos += [x for x in c.archivos if x not in previo.archivos]
         self.campos += nuevos
         for c in nuevos:
-            self.datos.prefijo_desc.setdefault(c.clave, c.prefijo)
-            self.datos.controlador.setdefault(c.clave, c.controlador)
-            # variable inicial 10 (regla del usuario: el campo 1 empieza en 10), o menos si no entra en 00-99
-            self.datos.variable_inicial.setdefault(c.clave, max(0, min(10, 100 - self.cantidad(c))))
-            # un campo numerado (de control) lleva las mediciones del multimedidor aunque el plano no lo nombre
-            self.datos.mediciones.setdefault(c.clave, bool(c.mediciones) or c.numero_pdf.isdigit())
+            self._inicializar_campo(c)
+        self._repartir_sa()
         if not self.datos.estilo:
             self.datos.estilo = estilo.detectar(Path(r).name for r in self.rutas)
         return [c.clave for c in nuevos], [c.clave for c in repetidos]
+
+    def _inicializar_campo(self, c: num.Campo) -> None:
+        """Valores por defecto de un campo nuevo (el usuario los puede cambiar en «Datos…»)."""
+        self.datos.prefijo_desc.setdefault(c.clave, c.prefijo)
+        self.datos.controlador.setdefault(c.clave, c.controlador)
+        # variable inicial 10 (regla del usuario: el campo 1 empieza en 10), o menos si no entra en 00-99
+        self.datos.variable_inicial.setdefault(c.clave, max(0, min(10, 100 - self.cantidad(c))))
+        # un campo numerado (de control) lleva las mediciones del multimedidor aunque el plano no lo nombre
+        self.datos.mediciones.setdefault(c.clave, bool(c.mediciones) or c.numero_pdf.isdigit())
+
+    # ------------------------------------------------------------ servicios auxiliares: SAA (alterna) / SAC (continua)
+    def _memoria_sa_ruta(self) -> Path:
+        return Path(self.perfil.carpeta) / "servicios_auxiliares.json"
+
+    def _leer_memoria_sa(self) -> dict[str, str]:
+        """Lo que el usuario ya contestó (en cualquier proyecto): rótulo normalizado -> SAA o SAC."""
+        ruta = self._memoria_sa_ruta()
+        if not ruta.is_file():
+            return {}
+        return dict(json.loads(ruta.read_text(encoding="utf-8")).get("decisiones", {}))
+
+    def _guardar_memoria_sa(self) -> None:
+        ruta = self._memoria_sa_ruta()
+        previo = json.loads(ruta.read_text(encoding="utf-8")) if ruta.is_file() else {}
+        previo["decisiones"] = dict(sorted(self.memoria_sa.items()))
+        ruta.write_text(json.dumps(previo, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    def _campo_sa(self, s, cfg: dict) -> tuple[str | None, str]:
+        """(campo, de dónde sale) de una señal de servicios auxiliares; (None, 'sin asignar') si no se sabe."""
+        k = clave_sa(s.texto)
+        if k in self.datos.reparto_sa:
+            return self.datos.reparto_sa[k], "usuario"
+        if k in self.memoria_sa:
+            return self.memoria_sa[k], "memoria"
+        t = k.replace(" ", "")
+        for campo, pistas in cfg["pistas"].items():              # «Vca» = alterna, «Vcc» = continua (lo dice el propio rótulo)
+            if any(p in t for p in pistas):
+                return cfg[f"campo_{campo}"], "rótulo"
+        return None, "sin asignar"
+
+    def _repartir_sa(self) -> None:
+        """Reparte las alarmas del campo de servicios auxiliares entre SAA (alterna) y SAC (continua). Las que no se
+        pueden asignar quedan en SAA y figuran en `sa_info()` como «sin asignar» (la app las pregunta). Las reservas
+        quedan en SAA."""
+        cfg = self.cfg.get("servicios_auxiliares")
+        if not cfg:
+            return
+        por = {c.clave: c for c in self.campos}
+        saa, sac = por.get(cfg["campo_alterna"]), por.get(cfg["campo_continua"])
+        if saa is None:
+            return
+        conocidas = {id(x) for x in self._sa_orden}
+        for c in (saa, sac):                                      # las señales leídas de un PDF nuevo se suman al final
+            if c is not None:
+                self._sa_orden += [s for s in c.senales if id(s) not in conocidas]
+        alterna, continua = [], []
+        self.sa_info = []
+        for s in self._sa_orden:
+            if s.reserva:
+                alterna.append(s)
+                continue
+            campo, fuente = self._campo_sa(s, cfg)
+            (continua if campo == cfg["campo_continua"] else alterna).append(s)
+            self.sa_info.append({"texto": s.texto, "clave": clave_sa(s.texto), "campo": campo, "fuente": fuente,
+                                 "hoja": getattr(s.origen, "pagina", None)})
+        saa.senales = alterna
+        saa.descripcion_base = cfg["descripciones"]["alterna"]
+        if continua and sac is None:
+            sac = dataclasses.replace(saa, senales=[], clave=cfg["campo_continua"], numero=cfg["campo_continua"],
+                                      numero_pdf=cfg["campo_continua"], prefijo=cfg["campo_continua"],
+                                      paginas=list(saa.paginas), inferidos=list(saa.inferidos), archivos=list(saa.archivos))
+            self.campos.insert(self.campos.index(saa) + 1, sac)
+            self._inicializar_campo(sac)
+        if sac is not None:
+            sac.senales = continua
+            sac.descripcion_base = cfg["descripciones"]["continua"]
+            if not continua:                                      # nadie quedó en SAC: el campo deja de existir
+                self.campos.remove(sac)
+
+    def servicios_auxiliares(self) -> list[dict]:
+        """Las alarmas de servicios auxiliares con su campo y de dónde sale (usuario, memoria, rótulo o sin asignar)."""
+        return list(getattr(self, "sa_info", []))
+
+    def asignar_sa(self, decisiones: dict[str, str], recordar: bool = True) -> None:
+        """Guarda lo que el usuario eligió ({rótulo normalizado: 'SAA' o 'SAC'}) y vuelve a repartir. Con `recordar`, queda
+        en la memoria del perfil para los próximos proyectos."""
+        self.datos.reparto_sa.update(decisiones)
+        if recordar:
+            self.memoria_sa.update(decisiones)
+            self._guardar_memoria_sa()
+        self._repartir_sa()
+        self.hechos = []                                          # cambió el reparto: hay que volver a calcular
 
     @staticmethod
     def cantidad(campo: num.Campo) -> int:
@@ -138,11 +238,21 @@ class Libro:
                 for ls in (s.origen, s.origen_comando):
                     if ls is None or not getattr(ls, "tipo", ""):
                         continue
-                    clave = clave_modulo(c.clave, ls)
+                    clave = clave_modulo(desde_pdf.campo_de_modulo(c.clave, self.cfg), ls)
                     m = vistos.setdefault(clave, {"clave": clave, "campo": c.numero or c.clave, "hoja": ls.pagina,
                                                   "tipo": ls.tipo, "senales": 0, "placa_pdf": ls.placa})
                     m["senales"] += 1
         return sorted(vistos.values(), key=lambda m: (m["hoja"], m["tipo"], m["clave"]))
+
+    def controlador_medicion_defecto(self, campo: num.Campo) -> str:
+        """El controlador de las mediciones del campo si el usuario no escribió otro (según el estilo del listado)."""
+        return desde_pdf.controlador_medicion_defecto(campo, self.cfg, self.datos.estilo == estilo.USRE)
+
+    def tablero_defecto(self, campo: num.Campo) -> str:
+        """El tablero del campo si el usuario no escribió otro (se deduce de su nivel y número; ver desde_pdf)."""
+        c = dataclasses.replace(campo, nivel=self.datos.nivel.get(campo.clave) or campo.nivel_pdf,
+                                numero=self.datos.numero.get(campo.clave) or campo.numero_pdf)
+        return desde_pdf.tablero_defecto(c, self.cfg)
 
     def digito(self, nivel: str) -> str:
         return pdf_plano.codigo_nivel(nivel, self.cfg)
@@ -262,6 +372,7 @@ class Libro:
         guardados["rangos"] = {int(k): v for k, v in guardados.get("rangos", {}).items()}
         validos = {k: v for k, v in guardados.items() if k in Datos.__dataclass_fields__}
         self.datos = Datos(**validos)
+        self._repartir_sa()                                        # con las decisiones guardadas en el proyecto
         if d.get("calculado") and self.campos:
             self.calcular()
         return d.get("caratula"), faltan

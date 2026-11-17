@@ -206,6 +206,11 @@
       }
     ]
   },
+  "tablero": {
+    "_": "Tablero de cada campo, deducido del Excel oficial de Senillosa (TC1-03 = campo 103) y de los cajetines ETAP (TC2-04 = campo 204): TC + dígito del nivel + guion + campo de 2 cifras. Los servicios auxiliares (SAA y SAC) van en el tablero del plano que los trae. Todo se puede cambiar por campo en «Datos…».",
+    "campo_numerico": "TC{nivel}-{campo:02d}",
+    "servicios_auxiliares": "TDCI"
+  },
   "complementos": {
     "_": "Un rótulo suelto 'en local' (o 'en remoto') es una señalización de dos estados: el otro estado es su complemento, aunque el plano no lo nombre. Se lee como un par Local/Remoto de doble bit.",
     "pares": [
@@ -222,6 +227,19 @@
         "texto": "en Local/Remoto"
       }
     ]
+  },
+  "servicios_auxiliares": {
+    "_": "Las alarmas de servicios auxiliares (campo SAA del plano) se reparten en SAA (alterna) y SAC (continua), según las Reglas. Orden de prioridad: lo que el usuario eligió en el proyecto, lo que ya contestó antes (perfiles/EPEN/servicios_auxiliares.json) y, si el propio rótulo lo dice (Vca = alterna, Vcc = continua), eso. Lo que no se sabe se pregunta.",
+    "campo_alterna": "SAA",
+    "campo_continua": "SAC",
+    "pistas": {
+      "alterna": ["vca"],
+      "continua": ["vcc"]
+    },
+    "descripciones": {
+      "alterna": "Servicios Auxiliares de Alterna",
+      "continua": "Servicios Auxiliares de Continua"
+    }
   },
   "comando_con_senalizacion": {
     "_": "Un comando sin equipo ('Comando protección grupo A') va con la entrada que lo señaliza ('Señalización protección grupo A'): misma frase sin la palabra inicial.",

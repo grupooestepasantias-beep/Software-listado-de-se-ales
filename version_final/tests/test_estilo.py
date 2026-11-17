@@ -94,6 +94,21 @@ class TestSenillosa(unittest.TestCase):
         textos = " ".join(str(f[5]) + str(f[6]) for f in self.filas)
         self.assertNotIn("152/01", textos)
 
+    def test_la_desc_hmi_de_las_mediciones_va_sin_prefijo_y_con_tilde(self):
+        descs = [f[6] for f in self.filas if f[7] and f[7].endswith(("AU", "AV", "AW"))]
+        self.assertIn("TENSIÓN CAMPO 03 13,2kV FASE R", descs)
+        self.assertFalse(any(d.startswith("103 ") for d in descs if d))
+
+    def test_el_controlador_de_medicion_se_cambia_por_campo(self):
+        self.L.datos.controlador_medicion["103"] = "15203_MED"
+        try:
+            ctl = {(b.campo, b.controlador) for b in self.L.base().senales if b.funcion == "MEDICION" and not b.es_hueco}
+        finally:
+            self.L.datos.controlador_medicion.pop("103")
+        self.assertIn(("03", "15203_MED"), ctl)                                  # el campo cambiado
+        self.assertIn(("01", "SATEC - PM335_13,2kV"), ctl)                       # los demás siguen con el del estilo
+        self.assertEqual(self.L.controlador_medicion_defecto(self.L.campos[0]), "SATEC - PM335_13,2kV")
+
 
 if __name__ == "__main__":
     unittest.main()

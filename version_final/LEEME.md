@@ -48,13 +48,14 @@ Sale de comparar `134.xlsx` (app) con `USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx
   (`Libro.exportar_base`) es idéntico al de la exportación directa (lo prueban `tests/test_base.py`).
 - Los proyectos guardados son versión 2 (llevan la base); los de la versión 1 siguen abriendo.
 - Cada señal recuerda hoja y PDF de origen (para los avisos de la etapa 3). Tablero, borne e índice DNP todavía no se
-  llenan (etapa 4). El índice DNP es el mismo número que el OFFSET (regla del usuario, 2026-11-13; si cambia, avisa).
+  llenan (etapa 4). El índice DNP es solo una columna: queda vacía (el usuario pidió no calcularlo; 2026-11-16).
 - Estados con el texto del Excel oficial: ABIERTO/CERRADO, LOCAL/REMOTO, TELE/DISTANCIA, AUTO/MAN, CON/SIN, con
   `error_0`/`error_1` de las Reglas.
 
 ## Formatos de salida (`formatos/`, etapa 2)
-«Exportar Excel…» pregunta el formato (sugiere *completo* para obras USRE y *reducido* para ETAP). Siempre sale un .xlsx
-normal, editable. Elegir un formato no borra nada de la base: solo decide qué columnas salen.
+«Exportar Excel…» saca siempre el formato **completo** (el reducido se quitó de la pantalla a pedido del usuario el
+2026-11-16; sigue existiendo en `formatos/reducido.json` por si se necesita desde código). Siempre sale un .xlsx normal,
+editable. Un formato no borra nada de la base: solo decide qué columnas salen.
 | Formato | Columnas | Aspecto |
 |---|---|---|
 | `reducido` | A-O: ITEM … UNITS (HMI, SCADA, mediciones y estados) | el de siempre |
@@ -64,8 +65,46 @@ normal, editable. Elegir un formato no borra nada de la base: solo decide qué c
 - `formatos/escritor.py` escribe desde la base (`ProyectoDB`). La plantilla del completo sale del Excel oficial con
   `herramientas/extraer_plantilla.py` (`plantillas/USRE/USRE_listado.json`).
 - Decisiones del usuario: la columna G «EXTERNAL NAME» queda vacía; se ignora la hoja oculta «ScaInit» del oficial; no se
-  fija el panel (el oficial lo tiene en A64). El índice DNP es igual al OFFSET. Tablero, bornera y borne salen vacíos
+  fija el panel (el oficial lo tiene en A64). El índice DNP sale vacío. Tablero, bornera y borne salen vacíos
   hasta la etapa 4. La carátula sigue la de la plantilla EPEN.
+
+## Filas libres y controlador de medición
+- Las filas libres (los 10 lugares que se dejan entre secciones para ampliaciones) salen **vacías, sin OFFSET ni ITEM**.
+  El contador de offsets sí las salta, así que los números de las filas con datos tienen un salto. La base conserva el
+  offset reservado de cada una.
+- «Datos…» tiene una columna **Controlador (medición)** por campo, al lado de Controlador (ej. `15203_MED`). Si no la
+  cambiás, se usa la del estilo (`SATEC - PM335_<tensión>` en USRE). Escalas y separación de offsets no se tocaron.
+
+## Servicios auxiliares (SAA alterna / SAC continua)
+Las alarmas del campo SAA del plano se reparten en SAA y SAC (Reglas). Prioridad: lo que elegís en el proyecto, lo que
+ya contestaste (`perfiles/EPEN/servicios_auxiliares.json`) y lo que dice el propio rótulo (Vca / Vcc). La app pregunta
+**solo** las alarmas que no sabe, en «Datos… → Servicios auxiliares» (rosa = sin asignar; quedan en SAA hasta que las
+asignes), y recuerda las respuestas para los próximos proyectos. Las reservas quedan en SAA. Detalle y las 39
+respuestas del TDCI de Senillosa: `propuestas/servicios_auxiliares.md`.
+
+## Avisos (`avisos/`, etapa 3)
+Pestaña **Avisos** y filas coloreadas en el Listado. Los avisos **solo informan: nunca cambian un dato**. Doble clic en un
+aviso lleva a su fila (con campo, ITEM y hoja del PDF).
+- **Celeste** = contradice una regla: TAG SCADA o TAG HMI repetido (salvo señal + comando, que comparten tag), OFFSET
+  repetido entre dos digitales o dos mediciones (es válido entre señal y comando y entre digital y medición; las filas
+  libres no cuentan), ITEM repetido, TAG fuera del formato de las Reglas, DESC. SCADA de más de 20 caracteres,
+  controlador de otra tensión que el nivel (si nombra una), escala invertida, y **el Excel exportado no coincide con la base**
+  (al exportar se vuelve a leer el archivo y se compara celda por celda).
+- **Rosa** = falta información o revisar: DESC. SCADA sin abreviar a 20 caracteres, datos obligatorios que faltan
+  (incluye escalas incompletas), TAG HMI y DESC. HMI que nombran otro equipo, conexionado incompleto (solo con el formato
+  completo, resumido en un aviso) y lo que no se pudo interpretar al leer el PDF.
+- Cada regla es una función de `avisos/reglas.py` en la lista `REGLAS`; sumar una no toca las demás. Los parámetros
+  (campos especiales, códigos de medición, largo de DESC. SCADA) están en `perfiles/EPEN/avisos.json`.
+- La pestaña se arma con `app/avisos_ui.py`.
+- También avisa (rosa) cuando dos señales distintas quedan con la misma DESC. SCADA.
+
+## Descripciones SCADA y tablero
+- **Vocabulario** (`abreviaturas.json`): ampliado con las Reglas y con cómo abrevia el Excel oficial de Senillosa (INT, PP DISP
+  GRL, F/U BAR 110VCC…). En los PDF de Senillosa las descripciones sin resolver bajaron de 85 a 3. En un campo especial
+  (SAA, SAC, TP1…) el rótulo conserva su tensión (`F/U CMDO 33` / `F/U CMDO 13`) para que no se repitan.
+- **Tablero** por campo: `TC` + dígito del nivel + `-` + campo (campo 103 → `TC1-03`), `TDCI` para SAA y SAC; se cambia en
+  «Datos… → Tablero». Sale en la columna TABLERO del formato completo. Bornera y borne todavía no se leen (ver
+  `PREGUNTAS_PENDIENTES.md`).
 
 ## Qué viene de dónde
 | Pieza | Origen |
