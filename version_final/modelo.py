@@ -108,6 +108,8 @@ class Senal:
     tablero: str = ""                     # tablero donde está la señal (ej. "TC1-03"); columna TABLERO del formato completo
     bornera_tablero: str = ""             # bornera del tablero leída de la tabla de bornes del plano (ej. "X1.1")
     borne_tablero: str = ""               # borne de esa bornera (ej. "71")
+    bornera_equipo: str = ""              # bornera del equipo de campo (ej. "XP"): conexionado aprendido (conexionado.py)
+    borne_equipo: str = ""                # borne de esa bornera (ej. "17")
     # Datos de apoyo para el generador (no son columnas del Excel)
     estado_id: Optional[str] = None       # id en estados.json del perfil
     medicion_codigo: Optional[str] = None  # sufijo de medición (AR, AU, AP...)

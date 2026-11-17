@@ -15,6 +15,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils import column_index_from_string
 
 import bornes
+import conexionado
 import descripcion
 import estados as est
 import estilo
@@ -273,6 +274,13 @@ def a_proyecto(filas, campos, datos, perfil=None):
         h = bornes.buscar(etiqueta, filas_b) if filas_b else None
         return (h.bornera, str(h.borne)) if h else ("", "")
 
+    tabla_equipos = conexionado.del_perfil(perfil) if perfil is not None else conexionado.Conexionado()
+
+    def equipo_de(prefijo_campo, etiqueta):
+        """(bornera, borne) del EQUIPO según el conexionado aprendido (conexionado.py); ('', '') si no se sabe con certeza."""
+        c = meta[prefijo_campo]
+        return tabla_equipos.buscar(etiqueta, c.nivel, c.descripcion, c.numero)
+
     modo = getattr(datos, "estilo", "") or estilo.ETAP
     usre = modo == estilo.USRE
     cfg_tag = {**cfg, "abreviaturas_tag": {}} if usre else cfg           # USRE: el TAG HMI no se abrevia
@@ -301,7 +309,7 @@ def a_proyecto(filas, campos, datos, perfil=None):
             valores = [None] * 5
             tag_hmi = desc_hmi = ctl = ""
             tipo_u = placa_u = entrada_u = obs_u = ""
-            bornera_u = borne_u = ""
+            bornera_u = borne_u = bornera_e = borne_e = ""
             if f.hueco:
                 desc, ok = "", True
             elif f.extra:
@@ -318,6 +326,7 @@ def a_proyecto(filas, campos, datos, perfil=None):
                     obs_u = f.senal.pares[1] if len(f.senal.pares) == 2 else ""
                 if len(f.senal.pares) == 2 and f.senal.origen is not f.senal.origen_comando:
                     bornera_u, borne_u = borne_de(f.campo, f.senal.pares[1])
+                    bornera_e, borne_e = equipo_de(f.campo, f.senal.pares[1])
             elif orden == num.MEDICION:
                 i = indice.setdefault(f.campo, 0)
                 indice[f.campo] += 1
@@ -354,12 +363,14 @@ def a_proyecto(filas, campos, datos, perfil=None):
                         tipo_u, placa_u = cmd.tipo, placa_de(cmd, clave[f.campo])
                         entrada_u = entrada_de(cmd, par=len(cmd.entradas) == 2)
                     obs_u = cmd.texto if cmd is not None else f.senal.texto
+                    bornera_e, borne_e = equipo_de(f.campo, obs_u)
                 elif f.senal.origen is not None and f.senal.origen is not f.senal.origen_comando:
                     ori = f.senal.origen
                     if ori.tipo:
                         tipo_u, placa_u, entrada_u = ori.tipo, placa_de(ori, clave[f.campo]), entrada_de(ori, 0)
                     obs_u = f.senal.pares[0] if f.senal.pares else f.senal.texto
                     bornera_u, borne_u = borne_de(f.campo, f.senal.pares[0] if f.senal.pares else f.senal.texto)
+                    bornera_e, borne_e = equipo_de(f.campo, f.senal.pares[0] if f.senal.pares else f.senal.texto)
                 tag_hmi = tag_de(texto)
                 desc_hmi = desc_de(pref, texto)
             s = Senal(funcion=funcion[orden], controlador=ctl, tag_hmi=tag_hmi, desc_hmi=desc_hmi, tag_scada=f.tag,
@@ -367,7 +378,8 @@ def a_proyecto(filas, campos, datos, perfil=None):
                       s0=valores[0], s1=valores[1], s2=valores[2], s3=valores[3], unidad=valores[4],
                       tipo_punto=TipoPunto(tipo_u) if tipo_u in ("DI", "DO", "AI", "AO") else None,
                       placa=placa_u, entrada=entrada_u, observaciones=obs_u,
-                      tablero="" if f.hueco else tablero_de(f.campo), bornera_tablero=bornera_u, borne_tablero=borne_u)
+                      tablero="" if f.hueco else tablero_de(f.campo), bornera_tablero=bornera_u, borne_tablero=borne_u,
+                      bornera_equipo=bornera_e, borne_equipo=borne_e)
             if f.senal is not None and f.senal.origen is not None:           # de qué hoja de qué PDF salió
                 s.hoja = getattr(f.senal.origen, "pagina", None)
                 s.archivo = meta[f.campo].archivos[0] if meta[f.campo].archivos else ""

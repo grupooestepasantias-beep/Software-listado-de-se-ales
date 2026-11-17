@@ -105,10 +105,13 @@ class TestBaseDesdeElPlano(unittest.TestCase):
         self.assertEqual(b.fuente_de("tablero"), REGLA)                 # el tablero se deduce (TC2-04, TDCI…)
         self.assertEqual(b.fuente_de("bornera_tablero"), "")            # lo que no hay no tiene fuente
 
-    def test_el_indice_dnp_y_el_conexionado_pendiente_quedan_vacios(self):
+    def test_el_indice_dnp_y_el_conexionado_de_tablero_quedan_vacios(self):
         self.assertTrue(all(b.indice_dnp is None for b in self.db.senales))      # solo una columna, sin datos
-        self.assertTrue(all(not b.borne_equipo and not b.bornera_equipo and not b.bornera_tablero and not b.borne_tablero
-                            for b in self.db.senales))
+        self.assertTrue(all(not b.bornera_tablero and not b.borne_tablero for b in self.db.senales))
+        # bornera/borne de EQUIPO: salen del conexionado aprendido (conexionado.py); si hay, son dato de la regla, no del plano
+        for b in self.db.senales:
+            if b.bornera_equipo or b.borne_equipo:
+                self.assertEqual((b.origen.get("bornera_equipo"), b.origen.get("borne_equipo")), ("regla", "regla"))
         self.assertTrue(any(b.tablero for b in self.db.senales))                  # el tablero sí se deduce
 
     def test_las_filas_libres_conservan_su_offset_en_la_base_aunque_no_se_muestre(self):

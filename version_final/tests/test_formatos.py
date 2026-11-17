@@ -93,11 +93,11 @@ class TestSalidas(unittest.TestCase):
         self.assertEqual([f[:6] for f in red], [f[:6] for f in com])
         self.assertEqual([f[6:15] for f in red], [f[7:16] for f in com])
 
-    def test_externalname_conexionado_y_dnp_salen_vacios(self):
+    def test_externalname_conexionado_de_tablero_y_dnp_salen_vacios(self):
         c = self.com
         filas = range(5, c.max_row + 1)
         self.assertTrue(all(c.cell(r, 7).value is None for r in filas))                   # G: EXTERNAL NAME
-        for letra in ("V", "W", "Y", "Z", "AA"):                                          # bornera, borne, DNP
+        for letra in ("V", "W", "AA"):                                                    # bornera y borne de tablero (sin OCR), DNP
             self.assertTrue(all(c[f"{letra}{r}"].value is None for r in filas), letra)
         self.assertEqual({c[f"R{r}"].value for r in filas} - {None}, {"TC2-04", "TC2-05", "TC2-06"})   # tablero deducido por campo
 

@@ -1,0 +1,806 @@
+{
+ "nota": "Bornera y borne de equipo aprendidos de un listado oficial. Se pueden corregir a mano.",
+ "reglas": [
+  {
+   "clave": "ali1 13 2kv recierre deshabilitar/habilitar",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "X0",
+   "borne": "3/4",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "ALI1 13,2kV - Recierre Deshabilitar/Habilitar"
+  },
+  {
+   "clave": "ali2 13 2kv recierre deshabilitar/habilitar",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "X0",
+   "borne": "3/4",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "ALI2 13,2kV - Recierre Deshabilitar/Habilitar"
+  },
+  {
+   "clave": "ali3 13 2kv recierre deshabilitar/habilitar",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "X0",
+   "borne": "3/4",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "ALI3 13,2kV - Recierre Deshabilitar/Habilitar"
+  },
+  {
+   "clave": "interruptor # abierto",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "IOM-XP1",
+   "borne": "12",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 15201 Abierto"
+  },
+  {
+   "clave": "interruptor # abierto",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "IOM-XP1",
+   "borne": "NA1",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 15205 Abierto"
+  },
+  {
+   "clave": "interruptor # abrir/cerrar",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "X0",
+   "borne": "1/2",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 15201 Abrir/Cerrar"
+  },
+  {
+   "clave": "interruptor # abrir/cerrar",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "X0",
+   "borne": "1/2",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 15205 Abrir/Cerrar"
+  },
+  {
+   "clave": "interruptor # cerrado",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "IOM-XP1",
+   "borne": "14",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 15201 Cerrado"
+  },
+  {
+   "clave": "interruptor # cerrado",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "IOM-XP1",
+   "borne": "NA2",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 15205 Cerrado"
+  },
+  {
+   "clave": "interruptor # en remoto/en local",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "IOM-XP1",
+   "borne": "20/22",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 15201 En Remoto/En Local"
+  },
+  {
+   "clave": "lm1 13 2kv con recierre",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "IOM-XP1",
+   "borne": "NC8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "LM1 13,2kV - Con Recierre"
+  },
+  {
+   "clave": "lm1 13 2kv sin recierre",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "IOM-XP1",
+   "borne": "NA8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "LM1 13,2kV - Sin Recierre"
+  },
+  {
+   "clave": "lm2 13 2kv con recierre",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "IOM-XP1",
+   "borne": "NC8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "LM2 13,2kV - Con Recierre"
+  },
+  {
+   "clave": "lm2 13 2kv sin recierre",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "IOM-XP1",
+   "borne": "NA8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "LM2 13,2kV - Sin Recierre"
+  },
+  {
+   "clave": "lm3 13 2kv con recierre",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "IOM-XP1",
+   "borne": "NC8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "LM3 13,2kV - Con Recierre"
+  },
+  {
+   "clave": "lm3 13 2kv sin recierre",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "IOM-XP1",
+   "borne": "NA8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "LM3 13,2kV - Sin Recierre"
+  },
+  {
+   "clave": "pat #t abierto",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "L1",
+   "borne": "8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "PAT 189T05 Abierto"
+  },
+  {
+   "clave": "pat #t cerrado",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "L1",
+   "borne": "2",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "PAT 189T05 Cerrado"
+  },
+  {
+   "clave": "prot tp1 13 2kv disparo prot cuba cable",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "1XP1",
+   "borne": "24",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Prot. TP1 13,2kV - Disparo Prot Cuba Cable"
+  },
+  {
+   "clave": "prot tp1 13 2kv falla prot cuba cable",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "1XP1",
+   "borne": "25",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Prot. TP1 13,2kV - Falla Prot Cuba Cable"
+  },
+  {
+   "clave": "proteccion grupo a",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "1XP1",
+   "borne": "22",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Proteccion Grupo A"
+  },
+  {
+   "clave": "proteccion grupo a",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "1XP{c}",
+   "borne": "19",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": ""
+  },
+  {
+   "clave": "proteccion grupo b",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "1XP1",
+   "borne": "23",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Proteccion Grupo B"
+  },
+  {
+   "clave": "proteccion grupo b",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "1XP{c}",
+   "borne": "20",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": ""
+  },
+  {
+   "clave": "seccionador # abierto",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "L0",
+   "borne": "43",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 18901 Abierto"
+  },
+  {
+   "clave": "seccionador # abierto",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "L0",
+   "borne": "8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 18905 Abierto"
+  },
+  {
+   "clave": "seccionador # abrir/cerrar",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "LO",
+   "borne": "24/23",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 18901 Abrir/Cerrar"
+  },
+  {
+   "clave": "seccionador # cerrado",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "L0",
+   "borne": "41",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 18901 Cerrado"
+  },
+  {
+   "clave": "seccionador # cerrado",
+   "nivel": "13,2KV",
+   "tipo_campo": "lm",
+   "bornera": "L0",
+   "borne": "2",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 18905 Cerrado"
+  },
+  {
+   "clave": "seccionador # en remoto/en local",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "L0",
+   "borne": "26/28",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 18901 En Remoto/En Local"
+  },
+  {
+   "clave": "seccionador # falta tension",
+   "nivel": "13,2KV",
+   "tipo_campo": "entrada",
+   "bornera": "L0",
+   "borne": "5",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 18901 Falta Tension"
+  },
+  {
+   "clave": "interruptor # abierto",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "-XP1",
+   "borne": "2",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 25201 Abierto"
+  },
+  {
+   "clave": "interruptor # abrir/cerrar",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "XP",
+   "borne": "14/13",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 25201 Abrir/Cerrar"
+  },
+  {
+   "clave": "interruptor # cerrado",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "-XP1",
+   "borne": "4",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 25201 Cerrado"
+  },
+  {
+   "clave": "interruptor # en local",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "-XP1",
+   "borne": "24",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 25201 En Local"
+  },
+  {
+   "clave": "interruptor # en remoto",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "-XP1",
+   "borne": "26",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 25201 En Remoto"
+  },
+  {
+   "clave": "interruptor # resorte descargado",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "XP",
+   "borne": "17",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 25201 Resorte Descargado"
+  },
+  {
+   "clave": "prot ppal 33kv falla interna",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "2XP1",
+   "borne": "3",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Prot. Ppal. 33kV - Falla Interna"
+  },
+  {
+   "clave": "prot resp 33kv falla interna",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "2XP1",
+   "borne": "33",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Prot. Resp. 33kV - Falla Interna"
+  },
+  {
+   "clave": "seccionador # abierto",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "L0",
+   "borne": "43",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 28901 Abierto"
+  },
+  {
+   "clave": "seccionador # abrir/cerrar",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "L0",
+   "borne": "24/23",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 28901 Abrir/Cerrar"
+  },
+  {
+   "clave": "seccionador # cerrado",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "L0",
+   "borne": "41",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 28901 Cerrado"
+  },
+  {
+   "clave": "seccionador # en local",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "L0",
+   "borne": "26",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 28901 En Local"
+  },
+  {
+   "clave": "seccionador # en remoto",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "L0",
+   "borne": "28",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 28901 En Remoto"
+  },
+  {
+   "clave": "seccionador # falta tension",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "L0",
+   "borne": "1",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 28901 Falta Tensión"
+  },
+  {
+   "clave": "seccionador #t abierto",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "L2",
+   "borne": "3",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 28T901 Abierto"
+  },
+  {
+   "clave": "seccionador #t cerrado",
+   "nivel": "33KV",
+   "tipo_campo": "tr",
+   "bornera": "L2",
+   "borne": "1",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Seccionador 28T901 Cerrado"
+  },
+  {
+   "clave": "alimentacion cargador de baterias",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XAT",
+   "borne": "7",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Alimentacion Cargador de baterias"
+  },
+  {
+   "clave": "alimentacion de inversor",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XAT",
+   "borne": "13",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Alimentacion de inversor"
+  },
+  {
+   "clave": "alimentacion transf potencia tp01 rbc",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XAT",
+   "borne": "5",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Alimentacion transf. potencia TP01 (RBC)"
+  },
+  {
+   "clave": "falta alimentacion inversor",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "4",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta Alimentacion Inversor"
+  },
+  {
+   "clave": "falta tension #/220vca",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XAT",
+   "borne": "16",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension 380/220Vca"
+  },
+  {
+   "clave": "falta tension 24vcc",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "19",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension 24Vcc"
+  },
+  {
+   "clave": "falta tension alimentacion mgeac",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "27",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension alimentacion MGEAC"
+  },
+  {
+   "clave": "falta tension alimentacion power injector 1",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "24",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension alimentacion Power Injector 1"
+  },
+  {
+   "clave": "falta tension alimentacion power injector 2",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "25",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension alimentacion Power Injector 2"
+  },
+  {
+   "clave": "falta tension barra 110vcc",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "30",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension barra 110Vcc"
+  },
+  {
+   "clave": "falta tension barra 24vcc",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "32",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension barra 24Vcc"
+  },
+  {
+   "clave": "falta tension barra 48vcc",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "31",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension barra 48Vcc"
+  },
+  {
+   "clave": "falta tension de comando 13 2kv",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "6",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension de comando 13,2kV"
+  },
+  {
+   "clave": "falta tension de comando 33kv",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "5",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension de comando 33kV"
+  },
+  {
+   "clave": "falta tension exploracion 13 2kv",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "23",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension exploracion 13,2kV"
+  },
+  {
+   "clave": "falta tension exploracion 33kv",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "22",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension exploracion 33kV"
+  },
+  {
+   "clave": "falta tension exploracion mgeac",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "28",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension exploracion MGEAC"
+  },
+  {
+   "clave": "falta tension fuente 1 48vcc",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "9",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension fuente 1 48Vcc"
+  },
+  {
+   "clave": "falta tension fuente 2 48vcc",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "10",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension fuente 2 48Vcc"
+  },
+  {
+   "clave": "falta tension fuerza motriz 13 2kv",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension fuerza motriz 13,2kV"
+  },
+  {
+   "clave": "falta tension fuerza motriz 33kv",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "7",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension fuerza motriz 33kV"
+  },
+  {
+   "clave": "falta tension general alarmas",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "12",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension general alarmas"
+  },
+  {
+   "clave": "falta tension interruptor ppal 48vcc",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "20",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension interruptor ppal 48Vcc"
+  },
+  {
+   "clave": "falta tension senalizacion general",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "14",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension senalizacion general"
+  },
+  {
+   "clave": "falta tension tab comunicacion",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "16",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension Tab. Comunicacion"
+  },
+  {
+   "clave": "falta tension tableros med y prot",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "13",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Falta tension tableros Med. Y Prot"
+  },
+  {
+   "clave": "iluminacion columna a p",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XAT",
+   "borne": "15",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Iluminacion columna a P"
+  },
+  {
+   "clave": "iluminacion playa",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XAT",
+   "borne": "10",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Iluminacion playa"
+  },
+  {
+   "clave": "interruptor 380vac abierto",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XAT",
+   "borne": "3",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor 380VAC Abierto"
+  },
+  {
+   "clave": "interruptor ppal 110vcc abierto",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XCT",
+   "borne": "3",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Interruptor Ppal 110VCC Abierto"
+  },
+  {
+   "clave": "tablero seccional del shelter",
+   "nivel": "NA",
+   "tipo_campo": "ssaa",
+   "bornera": "XAT",
+   "borne": "8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Tablero seccional del Shelter"
+  },
+  {
+   "clave": "trafo tr01 alarma buchholz",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X7",
+   "borne": "10",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Alarma Buchholz"
+  },
+  {
+   "clave": "trafo tr01 alarma imagen termica secundario",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X7",
+   "borne": "6",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Alarma Imagen Térmica Secundario"
+  },
+  {
+   "clave": "trafo tr01 alarma nivel de aceite cbc",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X7",
+   "borne": "9",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Alarma Nivel de Aceite CBC"
+  },
+  {
+   "clave": "trafo tr01 alarma nivel de aceite trafo",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X7",
+   "borne": "8",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Alarma Nivel de Aceite Trafo"
+  },
+  {
+   "clave": "trafo tr01 alarma temperatura trafo",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X7",
+   "borne": "7",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Alarma Temperatura Trafo"
+  },
+  {
+   "clave": "trafo tr01 control ventiladores en automatico",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X8",
+   "borne": "17",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Control Ventiladores En Automático"
+  },
+  {
+   "clave": "trafo tr01 control ventiladores en manual",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X8",
+   "borne": "18",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Control Ventiladores En Manual"
+  },
+  {
+   "clave": "trafo tr01 falla ventiladores g1",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X8",
+   "borne": "27/28",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Falla Ventiladores G1"
+  },
+  {
+   "clave": "trafo tr01 falla ventiladores g2",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X8",
+   "borne": "27/28",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Falla Ventiladores G2"
+  },
+  {
+   "clave": "trafo tr01 ventilacion en marcha g1",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X8",
+   "borne": "23/24",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Ventilación En marcha G1"
+  },
+  {
+   "clave": "trafo tr01 ventilacion en marcha g2",
+   "nivel": "NVL0",
+   "tipo_campo": "tr",
+   "bornera": "X8",
+   "borne": "25/26",
+   "fuente": "USRE-0119-SET-C-T-LI-Ls-0744_rD_DV_2.xlsx",
+   "etiqueta": "Trafo TR01 - Ventilación En marcha G2"
+  }
+ ]
+}

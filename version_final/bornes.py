@@ -24,10 +24,13 @@ ABREVIATURAS = {
     "int": "interruptor", "inte": "interruptor", "interr": "interruptor", "secciona": "seccionador", "seccion": "seccionador",
     "secc": "seccionador", "termomag": "termomagnetica", "termo": "termomagnetica", "descarg": "descargado",
     "descar": "descargado", "abiert": "abierto", "tens": "tension", "imag": "imagen", "ventila": "ventilacion",
-    "venti": "ventilacion", "transf": "transformador", "tpo1": "tp01", "prot": "proteccion", "ppal": "principal",
+    "venti": "ventilacion", "transf": "transformador", "tpo1": "tp01", "prot": "proteccion", "ppal": "principal", "recon": "reconectador", "recone": "reconectador",
+    "gral": "general", "gener": "general",
 }
 PALABRAS_VACIAS = {"de", "del", "la", "el", "los", "las", "en", "y", "a", "por", "con", "al", "un", "una"}
 UMBRAL = 0.7                                   # parecido mínimo entre la etiqueta y la descripción de la fila
+MIN_FILAS_DE_TABLAS = 20                       # con al menos tantas filas leídas de las tablas del final, no se lee el cableado
+SIEMPRE_CABLEADO = False                       # True = leer las hojas de cableado aunque haya tablas (≈ 10-30 s por hoja)
 MARGEN = 0.12                                  # cuánto mejor tiene que ser la mejor fila que la siguiente (si no, es dudosa)
 
 
@@ -212,4 +215,20 @@ def leer_bornes(ruta, avance: Optional[Callable[[str, int, int], None]] = None) 
     """Todas las filas de las tablas de bornera de un PDF ([] si no tiene o no hay OCR). `avance(etapa, n, total)` informa
     'buscando' (hojas miradas) y 'leyendo' (tablas leídas)."""
     hojas = hojas_de_tablas(ruta, (lambda n, t: avance("buscando", n, t)) if avance else None)
-    return leer_tablas(ruta, hojas, (lambda n, t: avance("leyendo", n, t)) if avance else None)
+    filas = leer_tablas(ruta, hojas, (lambda n, t: avance("leyendo", n, t)) if avance else None)
+    return filas + _de_cableado(ruta, filas, avance, hojas)
+
+
+def _de_cableado(ruta, de_tablas: list[FilaBorne], avance=None, hojas_tabla=()) -> list[FilaBorne]:
+    """Filas de las hojas de cableado (ver cableado.py) que las tablas del final no traen: las tablas mandan, el cableado
+    completa (planos sin tablas, o con muy pocas). Si el plano trae sus tablas se omite (`SIEMPRE_CABLEADO` lo fuerza).
+    Si falla, el listado sale igual."""
+    if len(de_tablas) >= MIN_FILAS_DE_TABLAS and not SIEMPRE_CABLEADO:
+        return []          # el plano trae sus tablas de bornes: leer además todas las hojas de cableado cuesta minutos y suma poco
+    try:
+        import cableado
+        ya = {(f.bornera, f.borne) for f in de_tablas}
+        return [f for f in cableado.leer_cableado(ruta, (lambda n, t: avance("cableado", n, t)) if avance else None, excluir=hojas_tabla)
+                if (f.bornera, f.borne) not in ya]
+    except Exception:
+        return []

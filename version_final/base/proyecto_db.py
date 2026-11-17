@@ -56,7 +56,8 @@ class ProyectoDB:
                         tipo_senal=s.tipo_punto.value if s.tipo_punto else "", placa=s.placa, entrada=s.entrada,
                         observaciones=s.observaciones, segunda_fila=s.segunda_fila, es_reserva=s.es_reserva,
                         es_hueco=huecos[i], sin_resolver=marcas[i], hoja=s.hoja, archivo=s.archivo, tablero=s.tablero,
-                        bornera_tablero=s.bornera_tablero, borne_tablero=s.borne_tablero)
+                        bornera_tablero=s.bornera_tablero, borne_tablero=s.borne_tablero,
+                        bornera_equipo=s.bornera_equipo, borne_equipo=s.borne_equipo)
                     for viejo, nuevo in _ESCALAS.items():          # K-N: estados o escalas según la función
                         setattr(b, nuevo if es_medicion else viejo, getattr(s, viejo))
                     if not huecos[i]:
@@ -99,7 +100,8 @@ class ProyectoDB:
                       tipo_punto=TipoPunto(b.tipo_senal) if _valido(b.tipo_senal) else None, placa=b.placa,
                       entrada=b.entrada, observaciones=b.observaciones, segunda_fila=b.segunda_fila,
                       es_reserva=b.es_reserva, hoja=b.hoja, archivo=b.archivo, tablero=b.tablero,
-                      bornera_tablero=b.bornera_tablero, borne_tablero=b.borne_tablero)
+                      bornera_tablero=b.bornera_tablero, borne_tablero=b.borne_tablero,
+                      bornera_equipo=b.bornera_equipo, borne_equipo=b.borne_equipo)
             for viejo, nuevo in _ESCALAS.items():
                 setattr(s, viejo, getattr(b, nuevo if es_medicion else viejo))
             campo.senales.append(s)

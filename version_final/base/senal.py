@@ -23,7 +23,7 @@ FUENTE_POR_DEFECTO = {
     "s0": REGLA, "s1": REGLA, "s2": REGLA, "s3": REGLA,
     "min_raw": REGLA, "max_raw": REGLA, "min_eu": REGLA, "max_eu": REGLA, "unidad": REGLA,
     "tipo_senal": PDF, "tablero": REGLA, "placa": PDF, "entrada": PDF, "bornera_tablero": PDF, "borne_tablero": PDF,
-    "bornera_equipo": PDF, "borne_equipo": PDF, "indice_dnp": PDF, "observaciones": PDF,
+    "bornera_equipo": REGLA, "borne_equipo": REGLA, "indice_dnp": PDF, "observaciones": PDF,
 }
 
 

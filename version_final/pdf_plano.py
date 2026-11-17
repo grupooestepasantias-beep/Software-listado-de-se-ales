@@ -366,6 +366,17 @@ def _placas_de_modulos(page, bandas) -> list[str]:
     lo pregunta."""
     etiquetas = [(cx, t) for cx, _, t in _horizontales(page) if _PLACA.match(t)]
     if not etiquetas or len(etiquetas) < len(bandas):
+        try:
+            import placas                      # las placas dibujadas (sin texto) se leen con OCR; si no hay, queda vacío
+            leidas = placas.por_ocr(page, len(bandas))
+        except Exception:
+            leidas = []
+        if leidas:
+            orden = sorted(range(len(bandas)), key=lambda i: sum(y for _, y, _ in bandas[i]) / len(bandas[i]))
+            res = [""] * len(bandas)
+            for i, t in zip(orden, leidas):
+                res[i] = t
+            return res
         return [""] * len(bandas)
     centros = [sum(y for _, y, _ in b) / len(b) for b in bandas]      # x en pantalla de cada módulo
     etiquetas.sort()

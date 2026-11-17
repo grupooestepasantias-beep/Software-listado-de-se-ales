@@ -31,6 +31,7 @@ COLUMNAS = [("item", "ITEM", 45), ("nivel", "NIVEL", 55), ("descrip", "DESCRIP",
             ("funcion", "FUNCION", 95), ("taghmi", "TAG HMI", 200), ("deschmi", "DESC. HMI", 190),
             ("tag", "TAG SCADA", 100), ("offset", "OFFSET", 55), ("desc", "DESC. SCADA", 160), ("k", "S0 / MIN RAW", 80), ("l", "S1 / MAX RAW", 80),
             ("m", "S2 / MIN EU", 80), ("n", "S3 / MAX EU", 80), ("o", "UNIDAD", 60),
+            ("tablero", "TABLERO", 60), ("bornera", "BORNERA", 65), ("borne", "BORNE", 50),
             ("tipo", "TIPO", 45), ("placa", "PLACA", 70), ("entrada", "ENTRADA", 60), ("obs", "DESCRIPCION / OBSERVACIONES", 260)]
 if not desde_pdf.MOSTRAR_UTR:                  # el apartado UTR (P a W) no se muestra ni se exporta
     COLUMNAS = [c for c in COLUMNAS if c[0] not in desde_pdf.COLUMNAS_UTR]
@@ -549,7 +550,8 @@ class App(tk.Tk):
             while True:
                 tipo, ruta, res = self.cola.get_nowait()
                 if tipo == "bornes":                        # (etapa, (hoja, total)) de la lectura de tablas de bornes dibujadas
-                    self.estado.set(("Buscando tablas de bornes en el plano" if ruta == "buscando" else "Leyendo las tablas de bornes")
+                    self.estado.set({"buscando": "Buscando tablas de bornes en el plano",
+                                     "cableado": "Leyendo los bornes de las hojas de cableado"}.get(ruta, "Leyendo las tablas de bornes")
                                     + f"… hoja {res[0]} de {res[1]}")
                     continue
                 if tipo == "copia":                         # (bytes, total) copiados desde el servidor
@@ -667,7 +669,7 @@ class App(tk.Tk):
         for campo, nivel, descrip, s, amarilla, libre, nro, clave, pos in filas:
             vals = [nro, nivel, descrip, s.controlador, s.funcion.value, s.tag_hmi, s.desc_hmi, s.tag_scada,
                     None if libre else s.offset,                 # las filas libres van vacías (sin OFFSET)
-                    s.desc_scada, s.s0, s.s1, s.s2, s.s3, s.unidad,
+                    s.desc_scada, s.s0, s.s1, s.s2, s.s3, s.unidad, s.tablero, s.bornera_tablero, s.borne_tablero,
                     s.tipo_punto.value if s.tipo_punto else "", s.placa, s.entrada, s.observaciones]
             vals = vals[:len(COLUMNAS)]
             tags = ()
