@@ -8,9 +8,11 @@ import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+import bornes
 import desde_pdf
 import estilo
 import hmi
+import ocr
 import numeracion as num
 from base import VERSION, ProyectoDB
 import pdf_plano
@@ -48,6 +50,7 @@ class Datos:
     reparto_sa: dict[str, str] = field(default_factory=dict)         # servicios auxiliares: rótulo normalizado -> "SAA" o "SAC"
     controlador_medicion: dict[str, str] = field(default_factory=dict)   # por campo: controlador de sus mediciones si se cambia
     tablero: dict[str, str] = field(default_factory=dict)            # por campo: tablero si se cambia (ej. "TC1-03")
+    bornes: dict[str, list] = field(default_factory=dict)            # por PDF: filas de sus tablas de bornes (bornes.a_dicts)
 
 
 def clave_sa(texto: str) -> str:
@@ -92,14 +95,32 @@ class Libro:
         parcial.replace(destino)
         return destino
 
-    def agregar_pdf(self, ruta, avance=None, avance_copia=None) -> tuple[list[str], list[str]]:
+    def leer_bornes(self, ruta, local=None, avance=None) -> int:
+        """Lee con OCR las tablas de bornera dibujadas en el PDF (ver bornes.py) y las guarda en los datos del proyecto.
+        Devuelve cuántas filas leyó (0 si no hay tablas o falta el OCR). `avance(etapa, n, total)`."""
+        nombre = Path(ruta).name
+        try:
+            filas = bornes.leer_bornes(local or self.copia_local(ruta), avance)
+        except Exception as e:                       # el OCR es un extra: si falla, el listado sale igual, sin bornes
+            self.avisos.append(f"{nombre}: no se pudieron leer las tablas de bornes ({e}).")
+            return 0
+        if filas:
+            self.datos.bornes[nombre] = bornes.a_dicts(filas)
+        elif not ocr.disponible():
+            self.avisos.append(f"{nombre}: falta el OCR (rapidocr-onnxruntime) para leer las tablas de bornes dibujadas.")
+        return len(filas)
+
+    def agregar_pdf(self, ruta, avance=None, avance_copia=None, avance_bornes=None) -> tuple[list[str], list[str]]:
         """Suma los campos del PDF. Devuelve (campos nuevos, campos que ya estaban); de un campo repetido se suman
         solo las señales que no estaban. `avance_copia(bytes, total)` informa la copia desde el servidor y
-        `avance(n, total)` por qué hoja va la lectura."""
+        `avance(n, total)` por qué hoja va la lectura; `avance_bornes(etapa, n, total)` la lectura de las tablas de bornes
+        dibujadas (solo si se pasa: tarda, y la ventana la muestra aparte)."""
         local = self.copia_local(ruta, avance_copia)
         self.ultimo_info = {}
         leidos, avisos = desde_pdf.campos_desde_pdf(local, self.perfil, avance=avance, info=self.ultimo_info)
         self.avisos += avisos
+        if avance_bornes is not None:
+            self.leer_bornes(ruta, local, avance_bornes)
         if str(Path(ruta)) not in self.rutas:
             self.rutas.append(str(Path(ruta)))
         for c in leidos:                                  # el nombre del archivo es el original, no el de la copia

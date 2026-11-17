@@ -10,10 +10,10 @@ decidió hasta ahora.
    - ¿Es correcta la regla?
    - **TP1** (campo del transformador): el oficial usa `TC2-01`. No lo deduje; queda vacío. ¿Se escribe a mano o hay regla?
    - Las mediciones «promedio» del oficial llevan tablero `TMED`. ¿Lo agrego para esas dos filas de cada campo?
-2. **Bornera y borne de tablero** (ej. `XDI.1` / `6`, `X1.1` / `71`, `X4` / `18`). Solo el **TDCI** los trae como texto
-   (`X4/18` = bornera X4, borne 18). Los PDF de los tableros de control (13,2 kV, TP01) casi no tienen texto de bornes.
-   - ¿De dónde se sacan en esos tableros (planos de cableado, una lista de bornes)?
-   - Para el TDCI puedo leerlos del plano. ¿Lo hago?
+2. **Bornera y borne de tablero**: ya se leen de las tablas de bornes dibujadas (OCR). Dudas:
+   - Cuando una señal figura en varias borneras (X1.1, XA.1, XT.1…) elijo la fila con bobina A1. ¿Es el criterio correcto?
+   - Las que entran directo a la UTR (el oficial pone `XDI.1` / 1-8) y los comandos (`XDO.1` / `1/2`): en el plano la tabla
+     numera distinto (10, 11…). ¿El borne del oficial es el orden dentro del módulo (entrada 17-24 → 1-8)?
 3. **Bornera y borne de equipo** (ej. `XP` / `17`, `2XP1` / `33`): no están como texto en ningún PDF que revisé. ¿De dónde salen?
 4. **Placa** (ej. `UTR1.1.1`, `UTR2.1.D`): el PDF del tablero 33 kV (0811) la trae; el de 13,2 kV no. En el oficial, campos
    101, 103, 104 y 105 llevan `UTR1.1.1`, `UTR1.1.2`, `UTR1.1.3` y `UTR1.1.4`. ¿Es siempre «una placa por campo»?

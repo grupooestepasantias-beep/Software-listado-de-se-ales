@@ -537,7 +537,8 @@ class App(tk.Tk):
             try:
                 self.cola.put(("ok", ruta, self.libro.agregar_pdf(
                     ruta, avance=lambda n, t: self.cola.put(("avance", n, t)),
-                    avance_copia=lambda n, t: self.cola.put(("copia", n, t)))))
+                    avance_copia=lambda n, t: self.cola.put(("copia", n, t)),
+                    avance_bornes=lambda etapa, n, t: self.cola.put(("bornes", etapa, (n, t))))))
             except Exception as e:  # noqa: BLE001 - se muestra al usuario
                 self.cola.put(("error", ruta, e))
 
@@ -547,6 +548,10 @@ class App(tk.Tk):
         try:
             while True:
                 tipo, ruta, res = self.cola.get_nowait()
+                if tipo == "bornes":                        # (etapa, (hoja, total)) de la lectura de tablas de bornes dibujadas
+                    self.estado.set(("Buscando tablas de bornes en el plano" if ruta == "buscando" else "Leyendo las tablas de bornes")
+                                    + f"… hoja {res[0]} de {res[1]}")
+                    continue
                 if tipo == "copia":                         # (bytes, total) copiados desde el servidor
                     self.estado.set(f"Copiando el PDF desde el servidor… {ruta // 2**20} de {max(res // 2**20, 1)} MB")
                     continue

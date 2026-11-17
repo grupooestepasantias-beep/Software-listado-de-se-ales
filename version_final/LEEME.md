@@ -65,8 +65,8 @@ editable. Un formato no borra nada de la base: solo decide qué columnas salen.
 - `formatos/escritor.py` escribe desde la base (`ProyectoDB`). La plantilla del completo sale del Excel oficial con
   `herramientas/extraer_plantilla.py` (`plantillas/USRE/USRE_listado.json`).
 - Decisiones del usuario: la columna G «EXTERNAL NAME» queda vacía; se ignora la hoja oculta «ScaInit» del oficial; no se
-  fija el panel (el oficial lo tiene en A64). El índice DNP sale vacío. Tablero, bornera y borne salen vacíos
-  hasta la etapa 4. La carátula sigue la de la plantilla EPEN.
+  fija el panel (el oficial lo tiene en A64). El índice DNP sale vacío. La bornera y el borne de tablero salen de
+  las tablas de bornes del plano (ver «Bornera y borne»); los de equipo, vacíos. La carátula sigue la de la plantilla EPEN.
 
 ## Filas libres y controlador de medición
 - Las filas libres (los 10 lugares que se dejan entre secciones para ampliaciones) salen **vacías, sin OFFSET ni ITEM**.
@@ -103,8 +103,22 @@ aviso lleva a su fila (con campo, ITEM y hoja del PDF).
   GRL, F/U BAR 110VCC…). En los PDF de Senillosa las descripciones sin resolver bajaron de 85 a 3. En un campo especial
   (SAA, SAC, TP1…) el rótulo conserva su tensión (`F/U CMDO 33` / `F/U CMDO 13`) para que no se repitan.
 - **Tablero** por campo: `TC` + dígito del nivel + `-` + campo (campo 103 → `TC1-03`), `TDCI` para SAA y SAC; se cambia en
-  «Datos… → Tablero». Sale en la columna TABLERO del formato completo. Bornera y borne todavía no se leen (ver
-  `PREGUNTAS_PENDIENTES.md`).
+  «Datos… → Tablero». Sale en la columna TABLERO del formato completo.
+
+## Bornera y borne de tablero (etapa 4, `bornes.py` + `ocr.py`)
+Los planos funcionales traen al final una hoja por bornera con su tabla de bornes («X1.1 - DISTRIBUCIÓN DE 110 Vcc»), pero
+**dibujada** (sin texto). Al agregar un PDF la app:
+1. busca, entre las hojas sin texto, las que tienen el encabezado «DISPOSITIVO … BORNE» (OCR de la franja del encabezado);
+2. lee esas hojas con OCR (rapidocr, instalado) y saca de cada fila bornera, borne y descripción (cada hoja trae dos tablas);
+3. empareja cada señal con la fila cuya descripción se le parece (abreviaturas del plano, código de equipo). Cada estado de
+   una señal doble va a su borne. Si dos filas son igual de buenas vale la de la bobina **A1** (señal; A2 es el común); si
+   persiste el empate toma la primera y queda como dudosa. Sin fila parecida, queda vacío: no se adivina.
+- Es lento la primera vez (~1 s por hoja para buscar + ~15 s por tabla); el OCR queda en caché (`%TEMP%\listado_ocr_cache`).
+  Las filas leídas se guardan en el proyecto (`datos.bornes`), así que al abrirlo no se repite.
+- Medido contra el Excel oficial (campo 201 de Senillosa): coinciden X1.1/61-65, 67, 68 y 71.
+- Límites: no lee las señales que entran directo al módulo de la UTR (bornera XDI.1) ni los comandos (XDO.1); el OCR confunde
+  algún carácter (229T / 289T) y una señal puede quedar con otra bornera (ej. cuchilla de tierra). Bornera de equipo: sin fuente.
+- También se corrigió el texto con tipografía desplazada («6HFFLRQDGR» = «Seccionador») de las hojas 40-41 del 0811.
 
 ## Qué viene de dónde
 | Pieza | Origen |
@@ -118,8 +132,8 @@ Motor SCADA viejo (`scada/`, glosario, «Propuestas SCADA»), paso de calidad (`
 OCR y catálogo de controladores. Siguen en `..\codigo\` por si se necesitan.
 
 ## Pendiente / límites
-- PDF que son imagen (sin texto): necesitan OCR (no instalado).
-- BORNERA EQUIPO / N° DE BORNE EQUIPO (U, V), PROTOCOLO y POS DNP quedan vacíos.
+- Las tablas de bornes dibujadas necesitan el OCR (rapidocr-onnxruntime); sin él la app sigue y avisa.
+- BORNERA EQUIPO / N° DE BORNE EQUIPO, PROTOCOLO y POS DNP quedan vacíos.
 - Las placas salen del funcional; el topográfico todavía no se lee (decisión: dejarlo para después).
 
 ## Pruebas

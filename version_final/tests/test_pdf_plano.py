@@ -350,5 +350,21 @@ class TestEsquemasUsre(unittest.TestCase):
         self.assertEqual(pdf_plano.leer_plano(TMED, self.perfil), [])
 
 
+class TestFuenteDesplazada(unittest.TestCase):
+    """Texto con los códigos del tipo de letra (cada carácter 29 posiciones antes), como en las hojas 40 y 41 del 0811."""
+
+    def test_corrige_el_texto_con_caracteres_de_control(self):
+        self.assertEqual(pdf_plano.corregir_fuente("6HFFLRQDGR)DOWD7HQVLyQ"),
+                         "Seccionado 289 / 01 Falta Tensión")
+        self.assertEqual(pdf_plano.corregir_fuente("5HJXODFLyQHQFXUVR"), "Regulación en curso")
+        self.assertEqual(pdf_plano.corregir_fuente("7UDQVI732)DOOD5HOpIDOWDGHIDVH"),
+                         "Transf. TPO1 Falla Relé falta de fase")
+        self.assertEqual(pdf_plano.corregir_fuente("VHxDOL]DFLyQ"), "señalización ")
+
+    def test_no_toca_el_texto_normal(self):
+        for t in ("Interruptor 252 / 01 Cerrado", "Falta tensión de comando", "pxy"):
+            self.assertEqual(pdf_plano.corregir_fuente(t), t)
+
+
 if __name__ == "__main__":
     unittest.main()

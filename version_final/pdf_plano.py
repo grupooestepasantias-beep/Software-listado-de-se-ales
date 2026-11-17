@@ -95,12 +95,28 @@ _ROTULO_DE_CABLE = re.compile(
 
 _BLOQUES: dict = {}
 
+# Algunos PDF (ej. hojas de Word/AutoCAD con tipografía incrustada) traen el texto con los códigos del tipo de letra: cada
+# carácter viene 29 posiciones antes («6HFFLRQDGR» = «Seccionador», el espacio es \x03) y las letras con tilde y la ñ son
+# glifos sueltos. Se corrige solo en los trozos que traen caracteres de control (un texto normal no los tiene).
+_GLIFOS_CON_TILDE = {"p": "é", "x": "ñ", "y": "ó"}
+
+
+def corregir_fuente(texto: str) -> str:
+    if not any(ord(c) < 32 and c not in "\t\n\r" for c in texto):
+        return texto
+    return "".join(_GLIFOS_CON_TILDE.get(c) or (chr(ord(c) + 29) if ord(c) <= 0x5F else c) for c in texto)
+
 
 def _bloques(page) -> list:
     """Bloques de texto de la hoja (cacheados: extraerlos es lo más lento de la lectura)."""
     clave = (page.parent.name, page.number)
     if clave not in _BLOQUES:
-        _BLOQUES[clave] = page.get_text("dict")["blocks"]
+        bloques = page.get_text("dict")["blocks"]
+        for b in bloques:
+            for l in b.get("lines", []):
+                for sp in l["spans"]:
+                    sp["text"] = corregir_fuente(sp["text"])
+        _BLOQUES[clave] = bloques
     return _BLOQUES[clave]
 
 
