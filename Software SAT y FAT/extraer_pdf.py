@@ -9,6 +9,7 @@ pendiente y el generador lo reclama al usuario.
 - validar_planos(...)   -> identidad, revisión, estación y coherencia entre planos
 - comparar_con_pdf(...) -> contrasta lo que hay en las tablas con lo que dicen los planos
 """
+import difflib
 import hashlib
 import os
 import re
@@ -282,6 +283,52 @@ def _asignar_elementos(ruta, senales):
     return asignados
 
 
+# ------------------------------------------------------------------ nombres completos con el número del interruptor
+ETIQUETA_CELDA = re.compile(r"\s*\(\s*C\d+\s*\)|\s+Celda\s+A\d+\s*$")  # "(C1)" o "Celda A14" al final del nombre
+
+
+def _completar_nombres(doc, senales):
+    """Quita la referencia a la celda "(C1)" de los nombres y la reemplaza por el número que trae el plano.
+
+    La hoja de módulos dice "Interruptor Abierto (C1)"; el encabezado de la hoja de cableado dice "Interruptor 15201 Abierto"
+    (el número está dibujado como líneas: se lee por OCR). Se usa el encabezado de la columna de ese borne si coincide con el
+    nombre; si no se puede leer, se toma el número de otra columna de la misma hoja y, en último caso, solo se quita la celda.
+    """
+    import ocr_plano
+    pendientes = [s for s in senales if ETIQUETA_CELDA.search(s.nombre)]
+    if not pendientes:
+        return
+    paginas = sorted({s.pagina_cableado for s in pendientes if s.pagina_cableado})
+    encabezados = ocr_plano.encabezados_de_cableado(doc.name, paginas, PROGRESO_OCR) if ocr_plano.disponible() else {}
+    por_borne = {}
+    for n, columnas in encabezados.items():
+        slots = _slots_entradas(doc[n - 1])
+        if len(slots) == len(columnas):  # una columna de encabezado por cada borne de la hoja
+            por_borne[n] = {f"{b}/{num}": nombre for (b, num, _), nombre in zip(slots, columnas) if num}
+        else:
+            por_borne[n] = {}
+    for s in pendientes:
+        base = ETIQUETA_CELDA.sub("", s.nombre).strip()
+        encabezado = por_borne.get(s.pagina_cableado, {}).get(s.borne, "")
+        conectado = re.search(r"\b\d{5}\b", encabezado) is not None
+        parecido = difflib.SequenceMatcher(None, _normalizar_nombre(re.sub(r"\d", "", encabezado)),
+                                           _normalizar_nombre(base)).ratio() if encabezado else 0.0
+        misma_clase = encabezado.split()[:1] == base.split()[:1]  # "Prot Ppal Falla interna" no se reemplaza por "Falla interna"
+        s.de_celda = True
+        if encabezado and misma_clase and "|" not in encabezado and parecido >= 0.75 \
+                and (conectado or not base.lower().startswith("interruptor")):
+            s.nombre = encabezado
+            continue
+        s.de_celda = True  # el nombre trae la celda: los repetidos entre celdas distintas son normales
+        propio = re.search(r"\bInterruptor\s+(\d{5})\b", encabezado)  # el encabezado de su columna, aunque el OCR lo haya mezclado
+        numeros = {propio.group(1)} if propio else {m.group(1) for h in por_borne.get(s.pagina_cableado, {}).values()
+                                                    for m in [re.search(r"\bInterruptor\s+(\d{5})\b", h)] if m}
+        if len(numeros) == 1 and base.lower().startswith("interruptor"):  # con dos celdas en la hoja no se adivina
+            s.nombre = re.sub(r"(?i)^interruptor", f"Interruptor {next(iter(numeros))}", base, count=1)
+        else:
+            s.nombre = base
+
+
 # ------------------------------------------------------------------ señales y comandos
 def leer_funcional(ruta):
     """Lee el esquema funcional. Devuelve (senales, comandos, problemas).
@@ -345,6 +392,8 @@ def leer_funcional(ruta):
             borne, pgc = seccion["do"][i] if i < len(seccion["do"]) else ("", 0)
             comandos.append(Senal(borne, nombre, "DO", modulo, terminal, "", pg, pgc, archivo))
 
+    _completar_nombres(doc, senales)
+
     # Controles de coherencia de la lectura
     for s in senales + comandos:
         if not s.nombre.strip():
@@ -360,7 +409,7 @@ def leer_funcional(ruta):
             if c > 1:
                 problemas.append(_h("S02", BLOQUEANTE, ruta, 0, f"El borne {b} aparece {c} veces ({tipo}s).",
                                     "Revisar el plano: un borne no puede tener dos señales.", CONSISTENCIA))
-        por_nombre = Counter((s.borne.split("/")[0], s.nombre) for s in lista if s.borne)
+        por_nombre = Counter((s.borne.split("/")[0], s.nombre) for s in lista if s.borne and not getattr(s, "de_celda", False))
         for (bornera, nombre), c in por_nombre.items():
             if c > 1:
                 problemas.append(_h("S04", ADVERTENCIA, ruta, 0, f"La señal '{nombre}' está repetida {c} veces en {bornera}.",

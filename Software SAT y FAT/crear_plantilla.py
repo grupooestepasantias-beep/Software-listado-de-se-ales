@@ -31,7 +31,7 @@ from docx_util import (encabezados_y_pies, estilos_indice, filas_xml, marcar_fil
 
 ORIGEN_SAT = r"\\192.168.15.101\Archivos\PasantiasMM\la paz\SAT\Protocolo de ensayo SAT - Santa Rosa - rB.docx"
 ORIGEN_FAT = r"\\192.168.15.101\Archivos\PasantiasMM\la paz\FAT"
-CARPETA = os.path.dirname(os.path.abspath(__file__))
+CARPETA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plantillas")
 
 # Correcciones de ortografía y puntuación del texto fijo. No cambian ningún procedimiento.
 CORRECCIONES = [

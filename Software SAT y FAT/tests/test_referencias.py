@@ -204,6 +204,39 @@ def extraer_pdf_texto(ruta):
     return " ".join(p.get_text() for p in pymupdf.open(ruta))
 
 
+@unittest.skipUnless(hay(EF) and ocr_plano.disponible(), "sin el plano de La Paz o sin OCR")
+class NombresConNumeroDeInterruptor(unittest.TestCase):
+    """Las celdas de 13,2 kV: la hoja de módulos dice "Interruptor Abierto (C1)"; el encabezado del cableado, el número."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.s, _, _ = extraer_pdf.leer_funcional(EF)
+        cls.por_borne = {x.borne: x.nombre for x in cls.s}
+
+    def test_no_queda_ninguna_referencia_a_la_celda(self):
+        self.assertEqual([x.nombre for x in self.s if re.search(r"\(\s*C\d+\s*\)|Celda A\d+$", x.nombre)], [])
+
+    def test_los_interruptores_de_las_celdas_llevan_su_numero(self):
+        n = self.por_borne
+        self.assertEqual(n["-XFI3/1"], "Interruptor 15201 Abierto")
+        self.assertEqual(n["-XFI3/14"], "Interruptor 15202 Abierto")
+        self.assertEqual(n["-XFI3/27"], "Interruptor 15203 Abierto")
+        self.assertEqual(n["-XFI3/94"], "Interruptor 15213 Abierto")
+        self.assertEqual(n["-XFI3/107"], "Interruptor 15214 Abierto")
+        self.assertEqual(n["-XFI3/49"], "Interruptor 15204 Falta Tens. de Comando")  # el OCR mezcla dos celdas del encabezado
+        self.assertEqual(n["-XFI3/25"], "PAT 129ST02 Abierta")
+        self.assertEqual(n["-XFI3/10"], "Prot Ppal Falla interna")
+
+    def test_cada_celda_tiene_nueve_senales_de_interruptor_y_ninguna_sin_numero(self):
+        con = [x.nombre for x in self.s if x.borne.startswith("-XFI3/") and x.nombre.startswith("Interruptor")]
+        self.assertEqual(len(con), 81)
+        self.assertTrue(all(re.search(r"\b152\d\d\b", nombre) for nombre in con), [x for x in con if not re.search(r"\b152\d\d\b", x)])
+
+    def test_las_senales_de_66_kv_no_se_tocan(self):
+        self.assertEqual(self.por_borne["-XFI1/1"], "Interruptor 35201 en Local")
+        self.assertEqual(self.por_borne["-XFI1/2"], "Interr. 35201 Disparo Discrepancia de polos")
+
+
 ARROYITO = r"\\192.168.15.101\Archivos\PasantiasMM\EDESTE\Funcional\USRE-01-19-ET-El-PL-Ef-1102_r2.pdf"
 
 

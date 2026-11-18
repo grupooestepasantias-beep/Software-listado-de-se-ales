@@ -219,7 +219,7 @@ class IndiceNumeracionYPaginas(unittest.TestCase):
 class PiesDePagina(unittest.TestCase):
     def test_todas_las_plantillas_usan_campo_numpages(self):
         for nombre in g.PLANTILLAS.values():
-            with zipfile.ZipFile(os.path.join(os.path.dirname(AQUI), nombre)) as z:
+            with zipfile.ZipFile(os.path.join(os.path.dirname(AQUI), "plantillas", nombre)) as z:
                 pies = [z.read(n).decode("utf8") for n in z.namelist() if re.match(r"word/footer\d+\.xml", n)]
             con_pagina = [p for p in pies if "PAGE" in p]
             self.assertTrue(con_pagina, nombre)

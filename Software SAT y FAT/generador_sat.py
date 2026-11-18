@@ -38,12 +38,12 @@ PLANTILLAS = {
     "SAT_ANEXO1": "plantilla_sat_anexo1.docx",
     "SAT_ANEXO2": "plantilla_sat_anexo2.docx",
 }
-PLANTILLA = os.path.join(carpeta_programa(), PLANTILLAS["SAT"])
+PLANTILLA = os.path.join(carpeta_programa(), "plantillas", PLANTILLAS["SAT"])
 CANONICOS = ("SAT", "SAT_A1", "SAT_A2", "FAT", "FAT_A1", "FAT_A2")
 
 
 def ruta_plantilla(clave):
-    return os.path.join(carpeta_programa(), PLANTILLAS[clave])
+    return os.path.join(carpeta_programa(), "plantillas", PLANTILLAS[clave])
 
 
 def normalizar_incluir(incluir):

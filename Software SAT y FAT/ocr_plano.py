@@ -68,13 +68,6 @@ def _leer(img):
     return salida
 
 
-def _codigos(lecturas):
-    for t, c, _ in lecturas:
-        m = CODIGO.match(t)
-        if m and c >= CONFIANZA and not re.fullmatch(r"Q\d+\.", m.group(1)):
-            yield m.group(1)
-
-
 def _a_original(giro, x, y, ancho, alto):
     """Punto (x, y) de la imagen girada con np.rot90(giro) -> coordenadas de la imagen original (ancho x alto)."""
     return (ancho - 1 - y, x) if giro == 1 else (y, alto - 1 - x)
@@ -401,3 +394,51 @@ def elementos_de_comandos(ruta, progreso=None):
                     nombre = por_k[k][1]
                     salida.append((verbo, lado, nombre if nombre.startswith("-") else "-" + nombre, int(num), interruptor))
     return salida
+
+
+# ---------------------------------------------------------------- encabezados de las hojas de cableado ("Interruptor 15201 Abierto")
+def _columnas_de_encabezado(lecturas):
+    """Textos de las celdas de encabezado de una hoja, de izquierda a derecha (cada celda puede ocupar dos renglones)."""
+    # solo la franja de las celdas (a 250 dpi, hoja A3): arriba quedan las letras del marco y el título "CELDA A01…",
+    # abajo la fila de bornes "-X3"
+    items = sorted(((caja[0], caja[1], t.strip()) for t, c, caja in lecturas
+                    if c >= 0.6 and len(t.strip()) > 1 and 205 <= caja[1] <= 330), key=lambda r: (r[0], r[1]))
+    columnas = []
+    for x, y, t in items:
+        if columnas and abs(columnas[-1][0] - x) < 45:
+            columnas[-1][1].append((y, t))
+        else:
+            columnas.append([x, [(y, t)]])
+    def limpiar(texto_):  # el OCR a veces pega el número con las palabras: "Interruptor15202", "15201Falta"
+        texto_ = re.sub(r"(?<=\bPAT)(?=\d)", " ", texto_)
+        texto_ = re.sub(r"(?<=[A-Za-z])(\d{5})(?!\d)", r" \1", texto_)
+        texto_ = re.sub(r"(?<!\d)(\d{5})(?=[A-Za-z])", r"\1 ", texto_)
+        return re.sub(r"(?<=\.)(?=[A-Za-z])", " ", texto_)  # "Tens.de" -> "Tens. de"
+    return [limpiar(" ".join(" ".join(tt for _, tt in sorted(c[1])).split())) for c in columnas]
+
+
+def encabezados_de_cableado(ruta, paginas, progreso=None):
+    """{hoja: [texto de cada columna de izquierda a derecha]} del encabezado de las hojas de cableado pedidas (OCR, en caché).
+
+    Esos encabezados traen el nombre completo de la señal ("Interruptor 15201 Abierto") que en la hoja de módulos figura
+    abreviado ("Interruptor Abierto (C1)"); el número está dibujado como líneas, no como texto, por eso se lee por OCR.
+    Devuelve {} sin OCR.
+    """
+    if not disponible():
+        return {}
+    archivo = os.path.join(_carpeta_cache(), _clave(ruta) + "-encabezados-v1.json")
+    guardado = {}
+    if os.path.exists(archivo):
+        with open(archivo, encoding="utf-8") as f:
+            guardado = json.load(f)
+    faltan = [n for n in sorted(set(paginas)) if str(n) not in guardado]
+    if faltan:
+        doc = pymupdf.open(ruta)
+        for i, n in enumerate(faltan):
+            if progreso:
+                progreso(f"Leyendo los encabezados de la hoja {n} (OCR)…", i / len(faltan))
+            img = _imagen(doc[n - 1], 250)
+            guardado[str(n)] = [[t, c, list(caja)] for t, c, caja in _banda_superior(img)]
+        with open(archivo, "w", encoding="utf-8") as f:
+            json.dump(guardado, f)
+    return {n: _columnas_de_encabezado([(t, c, tuple(b)) for t, c, b in guardado[str(n)]]) for n in sorted(set(paginas))}

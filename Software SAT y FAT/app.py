@@ -29,8 +29,8 @@ CAMPOS = [  # clave, etiqueta, valor por defecto, opciones (None = campo de text
     ("FECHA", "Fecha (dd/mm/aaaa)", "", None),
     ("REVISION", "Revisión", "A", None),
 ]
-DOCUMENTOS = [("SAT", "Protocolo SAT (con sus anexos)"), ("FAT", "Protocolo FAT"), ("A1", "FAT Anexo 1 (energizado)"),
-              ("A2", "FAT Anexo 2 (señales)")]
+DOCUMENTOS = [("SAT", "SAT (protocolo + Anexo 1 + Anexo 2)"), ("FAT", "FAT (protocolo)"),
+              ("A1", "FAT Anexo 1 · energizado"), ("A2", "FAT Anexo 2 · señales y comandos")]
 PRESETS = [("Solo SAT", ("SAT",)), ("FAT completo", ("FAT", "A1", "A2")),
            ("Paquete completo", ("SAT", "FAT", "A1", "A2"))]
 COLORES = {validador.BLOQUEANTE: "#fde2e2", validador.ADVERTENCIA: "#fff3cd", validador.INFO: "#eef2f7"}
@@ -45,6 +45,7 @@ class TablaEditable(ttk.Frame):
 
     def __init__(self, master, columnas, anchos, alto=6):
         super().__init__(master)
+        self.al_cambiar = None  # función sin argumentos que la ventana asigna para refrescar sus resúmenes
         self.tree = ttk.Treeview(self, columns=columnas, show="headings", height=alto, selectmode="extended")
         for col, ancho in zip(columnas, anchos):
             self.tree.heading(col, text=col)
@@ -55,30 +56,52 @@ class TablaEditable(ttk.Frame):
         barra.grid(row=0, column=1, sticky="ns")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
+        self.tree.tag_configure("pendiente", background="#fff3cd")
         self.tree.bind("<Double-1>", self._editar)
+        self.tree.bind("<Delete>", lambda _: self.quitar())
+
+    def _cambio(self):
+        if self.al_cambiar:
+            self.al_cambiar()
+
+    def marcar_pendientes(self, es_pendiente):
+        """Resalta las filas que el usuario todavía tiene que completar (es_pendiente(valores) -> bool)."""
+        pendientes = 0
+        for i in self.tree.get_children():
+            marca = bool(es_pendiente(self.tree.item(i, "values")))
+            self.tree.item(i, tags=("pendiente",) if marca else ())
+            pendientes += marca
+        return pendientes
 
     def agregar(self, valores):
         self.tree.insert("", "end", values=valores)
+        self._cambio()
 
     def filas(self):
         return [tuple(self.tree.item(i, "values")) for i in self.tree.get_children()]
 
     def limpiar(self):
         self.tree.delete(*self.tree.get_children())
+        self._cambio()
 
     def cargar(self, filas):
+        aviso, self.al_cambiar = self.al_cambiar, None  # un solo refresco al terminar, no uno por fila
         self.limpiar()
         for fila in filas:
             self.agregar(fila)
+        self.al_cambiar = aviso
+        self._cambio()
 
     def quitar(self):
         for i in self.tree.selection():
             self.tree.delete(i)
+        self._cambio()
 
     def duplicar(self):
         for i in self.tree.selection():
             nuevo = self.tree.insert("", self.tree.index(i) + 1, values=self.tree.item(i, "values"))
             self.tree.selection_set(nuevo)
+        self._cambio()
 
     def insertar_vacia(self):
         sel = self.tree.selection()
@@ -86,6 +109,7 @@ class TablaEditable(ttk.Frame):
         nuevo = self.tree.insert("", pos, values=[""] * len(self.tree["columns"]))
         self.tree.selection_set(nuevo)
         self.tree.see(nuevo)
+        self._cambio()
 
     def mover(self, delta):
         for i in sorted(self.tree.selection(), key=self.tree.index, reverse=delta > 0):
@@ -109,6 +133,7 @@ class TablaEditable(ttk.Frame):
             valores[idx] = entrada.get()
             self.tree.item(fila, values=valores)
             entrada.destroy()
+            self._cambio()
 
         entrada.bind("<Return>", guardar)
         entrada.bind("<FocusOut>", guardar)
@@ -139,7 +164,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("Protocolos FAT y SAT - Grupo Oeste")
         try:
-            self.iconbitmap(os.path.join(g.carpeta_programa(), "icono.ico"))
+            self.iconbitmap(os.path.join(g.carpeta_programa(), "recursos", "icono.ico"))
         except Exception:  # sin ícono (p. ej. al correr desde el código sin el archivo) la ventana funciona igual
             pass
         self.geometry("980x860")
@@ -179,6 +204,12 @@ class App(tk.Tk):
         herramientas.add_command(label="Ver registro de operaciones", command=self._ver_registro)
         barra.add_cascade(label="Herramientas", menu=herramientas)
         ayuda = tk.Menu(barra, tearoff=0)
+        ayuda.add_command(label="Cómo se usa (4 pasos)", command=lambda: messagebox.showinfo(
+            "Cómo se usa", "1. Completá los datos de la obra.\n"
+            "2. Cargá los planos (1 o 2 PDF): se leen térmicas, señales y comandos.\n"
+            "3. Revisá las pestañas: lo resaltado en amarillo falta completarlo (doble clic en la celda).\n"
+            "4. Elegí qué generar y la carpeta, y tocá «Generar documentos» (Ctrl+G).\n\n"
+            "Lo que se lee de imágenes del plano (OCR) queda como pendiente de confirmar en el informe."))
         ayuda.add_command(label="Alcance del control de calidad", command=lambda: messagebox.showinfo(
             "Alcance", validador.AVISO_ALCANCE))
         barra.add_cascade(label="Ayuda", menu=ayuda)
@@ -193,7 +224,7 @@ class App(tk.Tk):
         self.lbl_proyecto = ttk.Label(raiz, text="Proyecto sin guardar", foreground="gray")
         self.lbl_proyecto.grid(row=0, column=0, sticky="w")
 
-        datos = ttk.LabelFrame(raiz, text="Datos del protocolo", padding=8)
+        datos = ttk.LabelFrame(raiz, text="1 · Datos de la obra", padding=8)
         datos.grid(row=1, column=0, sticky="ew", pady=(2, 0))
         for n, (clave, etiqueta, defecto, opciones) in enumerate(CAMPOS):
             fila, col = divmod(n, 2)
@@ -206,32 +237,29 @@ class App(tk.Tk):
         datos.columnconfigure(3, weight=1)
         self.vars["FECHA"].set(datetime.date.today().strftime("%d/%m/%Y"))
 
-        sel = ttk.LabelFrame(raiz, text="Qué generar", padding=8)
-        sel.grid(row=2, column=0, sticky="ew", pady=6)
-        for i, (clave, etiqueta) in enumerate(DOCUMENTOS):
-            ttk.Checkbutton(sel, text=etiqueta, variable=self.incluir[clave]).grid(row=0, column=i, sticky="w", padx=(0, 14))
-        ttk.Checkbutton(sel, text="Incluir lectura de protecciones", variable=self.protecciones).grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        ttk.Checkbutton(sel, text="Exportar también PDF", variable=self.pdf).grid(
-            row=1, column=2, columnspan=2, sticky="w", pady=(4, 0))
-        presets = ttk.Frame(sel)
-        presets.grid(row=0, column=5, rowspan=2, sticky="e", padx=(10, 0))
-        sel.columnconfigure(4, weight=1)
-        for texto, claves in PRESETS:
-            ttk.Button(presets, text=texto, command=lambda c=claves: self._preset(c)).pack(side="left", padx=2)
+        planos = ttk.LabelFrame(raiz, text="2 · Planos de ingeniería", padding=8)
+        planos.grid(row=2, column=0, sticky="ew", pady=6)
+        planos.columnconfigure(1, weight=1)
+        ttk.Button(planos, text="Cargar planos (1 o 2 PDF)…", command=self._leer_planos).grid(row=0, column=0, rowspan=2, padx=(0, 10))
+        self.lbl_planos = ttk.Label(planos, text="", wraplength=700, justify="left")
+        self.lbl_planos.grid(row=0, column=1, sticky="w")
+        ttk.Label(planos, foreground="gray", text="Un solo PDF funcional con todo, o el funcional y el constructivo. Se leen las "
+                  "térmicas, señales y comandos; lo que no se pueda leer queda resaltado en amarillo para completarlo.",
+                  wraplength=700, justify="left").grid(row=1, column=1, sticky="w")
 
+        ttk.Label(raiz, text="3 · Revisar y completar lo que haga falta", font=("Segoe UI", 9, "bold")).grid(row=3, column=0, sticky="nw")
         self.pestanas = ttk.Notebook(raiz)
-        self.pestanas.grid(row=3, column=0, sticky="nsew")
+        self.pestanas.grid(row=3, column=0, sticky="nsew", pady=(20, 0))
 
         p1 = ttk.Frame(self.pestanas, padding=6)
         p1.columnconfigure(0, weight=1)
         p1.rowconfigure(0, weight=1)
         p1.rowconfigure(1, weight=2)
-        self.pestanas.add(p1, text="Documentos y componentes")
+        self.p1 = p1
+        self.pestanas.add(p1, text="Referencias y hardware")
         marco, self.t_refs = panel_tabla(
             p1, "Documentos de referencia (doble clic para editar)", ("Archivo", "Descripción"), (300, 420),
-            lambda t: [("Leer planos (1 o 2 PDF)…", self._leer_planos), ("Agregar archivos…", self._agregar_docs),
-                       ("Agregar a mano", t.insertar_vacia),
+            lambda t: [("Agregar archivos…", self._agregar_docs), ("Agregar a mano", t.insertar_vacia),
                        ("Recalcular descripción", self._recalcular), ("Quitar", t.quitar),
                        ("Subir", lambda: t.mover(-1)), ("Bajar", lambda: t.mover(1))], alto=5)
         marco.grid(row=0, column=0, sticky="nsew")
@@ -243,9 +271,10 @@ class App(tk.Tk):
         p2 = ttk.Frame(self.pestanas, padding=6)
         p2.columnconfigure(0, weight=1)
         p2.rowconfigure(1, weight=1)
-        self.pestanas.add(p2, text="Anexo 1 - Energizado")
-        self.lbl_an1 = ttk.Label(p2, foreground="gray", text="Subí el PDF de planos (topográfico y/o funcional) para "
-                                 "leer las térmicas. Grupo: 220 VCA, 110 VCC o 48 VCC.")
+        self.p2 = p2
+        self.pestanas.add(p2, text="Anexo 1 · Energizado")
+        self.lbl_an1 = ttk.Label(p2, foreground="gray", text="Las térmicas se leen al cargar los planos (paso 2). "
+                                 "Grupo: 220 VCA, 110 VCC o 48 VCC. En amarillo: falta el grupo o la descripción.")
         self.lbl_an1.grid(row=0, column=0, sticky="w")
         marco, self.t_term = panel_tabla(
             p2, "Térmicas del Anexo 1", ("Grupo", "Descripción", "Térmica"), (90, 460, 90),
@@ -256,9 +285,10 @@ class App(tk.Tk):
         p3.columnconfigure(0, weight=1)
         p3.rowconfigure(1, weight=3)
         p3.rowconfigure(2, weight=1)
-        self.pestanas.add(p3, text="Anexo 2 - Señales")
-        self.lbl_an2 = ttk.Label(p3, foreground="gray", text="Subí el PDF del esquema funcional (EF). Las señales sin "
-                                 "borne quedan como '(ver H3/C01)': completarlas.")
+        self.p3 = p3
+        self.pestanas.add(p3, text="Anexo 2 · Señales")
+        self.lbl_an2 = ttk.Label(p3, foreground="gray", text="Las señales y comandos se leen al cargar los planos (paso 2). En amarillo: "
+                                 "falta el borne o elemento, completarlo (doble clic en la celda).")
         self.lbl_an2.grid(row=0, column=0, sticky="w")
         marco, self.t_sen = panel_tabla(
             p3, "Señales", ("Borne / Elemento", "Señal"), (150, 520),
@@ -270,6 +300,7 @@ class App(tk.Tk):
         p4 = ttk.Frame(self.pestanas, padding=6)
         p4.columnconfigure(0, weight=1)
         p4.rowconfigure(1, weight=1)
+        self.p4 = p4
         self.pestanas.add(p4, text="Control de calidad")
         self.lbl_calidad = ttk.Label(p4, text="Todavía no se controló ningún documento.", font=("Segoe UI", 10, "bold"))
         self.lbl_calidad.grid(row=0, column=0, sticky="w")
@@ -291,19 +322,59 @@ class App(tk.Tk):
                   "de ingeniería. Doble clic en una fila para ver el detalle.").pack(side="left")
         ttk.Button(pie_cal, text="Exportar informe…", command=self._exportar_informe).pack(side="right")
 
-        pie = ttk.Frame(raiz)
+        pie = ttk.LabelFrame(raiz, text="4 · Qué generar y dónde guardarlo", padding=8)
         pie.grid(row=4, column=0, sticky="ew", pady=(8, 0))
         pie.columnconfigure(1, weight=1)
-        ttk.Label(pie, text="Carpeta de salida:").grid(row=0, column=0, sticky="w")
-        ttk.Entry(pie, textvariable=self.carpeta).grid(row=0, column=1, sticky="ew", padx=4)
-        ttk.Button(pie, text="Elegir…", command=self._elegir_carpeta).grid(row=0, column=2)
-        ttk.Button(pie, text="Abrir carpeta", command=self._abrir_carpeta).grid(row=0, column=3, padx=(4, 0))
+        sel = ttk.Frame(pie)
+        sel.grid(row=0, column=0, columnspan=4, sticky="ew")
+        for i, (clave, etiqueta) in enumerate(DOCUMENTOS):
+            ttk.Checkbutton(sel, text=etiqueta, variable=self.incluir[clave]).grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 18))
+        opciones = ttk.Frame(sel)
+        opciones.grid(row=0, column=2, rowspan=2, sticky="w", padx=(10, 0))
+        ttk.Checkbutton(opciones, text="Incluir lectura de protecciones", variable=self.protecciones).pack(anchor="w")
+        ttk.Checkbutton(opciones, text="Exportar también PDF", variable=self.pdf).pack(anchor="w")
+        presets = ttk.Frame(sel)
+        presets.grid(row=0, column=3, rowspan=2, sticky="e")
+        sel.columnconfigure(3, weight=1)
+        for texto, claves in PRESETS:
+            ttk.Button(presets, text=texto, command=lambda c=claves: self._preset(c)).pack(side="left", padx=2)
+        ttk.Label(pie, text="Carpeta de salida:").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(pie, textvariable=self.carpeta).grid(row=1, column=1, sticky="ew", padx=4, pady=(8, 0))
+        ttk.Button(pie, text="Elegir…", command=self._elegir_carpeta).grid(row=1, column=2, pady=(8, 0))
+        ttk.Button(pie, text="Abrir carpeta", command=self._abrir_carpeta).grid(row=1, column=3, padx=(4, 0), pady=(8, 0))
         self.progreso = ttk.Progressbar(pie, maximum=1.0)
-        self.progreso.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+        self.progreso.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         self.estado = ttk.Label(pie, text="Listo.", foreground="gray")
-        self.estado.grid(row=2, column=0, columnspan=3, sticky="w")
+        self.estado.grid(row=3, column=0, columnspan=3, sticky="w")
         self.btn_generar = ttk.Button(pie, text="Generar documentos", command=self._generar)
-        self.btn_generar.grid(row=1, column=3, rowspan=2, sticky="e", padx=(4, 0), pady=(6, 0))
+        self.btn_generar.grid(row=2, column=3, rowspan=2, sticky="e", padx=(4, 0), pady=(8, 0))
+        self.bind("<Control-g>", lambda _: self._generar())
+
+        for tabla in (self.t_refs, self.t_comp, self.t_term, self.t_sen, self.t_cmd):
+            tabla.al_cambiar = self._actualizar_resumen
+        self._actualizar_resumen()
+
+    def _actualizar_resumen(self):
+        """Resumen de lo cargado: textos de los pasos, conteos en las pestañas y filas pendientes resaltadas en amarillo."""
+        if not hasattr(self, "lbl_planos") or not hasattr(self, "p3"):
+            return
+        sin_borne = lambda v: not str(v[0]).strip() or str(v[0]).startswith("(")
+        faltan_s = self.t_sen.marcar_pendientes(sin_borne)
+        faltan_c = self.t_cmd.marcar_pendientes(sin_borne)
+        faltan_t = self.t_term.marcar_pendientes(lambda v: not str(v[0]).strip() or not str(v[1]).strip())
+        n_t, n_s, n_c = len(self.t_term.filas()), len(self.t_sen.filas()), len(self.t_cmd.filas())
+        marca = lambda n: f" · faltan {n}" if n else ""
+        self.pestanas.tab(self.p1, text=f"Referencias y hardware ({len(self.t_refs.filas())})")
+        self.pestanas.tab(self.p2, text=f"Anexo 1 · Energizado ({n_t}{marca(faltan_t)})")
+        self.pestanas.tab(self.p3, text=f"Anexo 2 · Señales ({n_s + n_c}{marca(faltan_s + faltan_c)})")
+        planos = ", ".join(sorted(self.pdfs)) if self.pdfs else ""
+        if not planos and not (n_t or n_s or n_c):
+            self.lbl_planos.config(text="Todavía no cargaste planos.", foreground="gray")
+            return
+        pendientes = faltan_s + faltan_c + faltan_t
+        texto = (f"{planos or 'Cargado a mano'}  ·  Térmicas: {n_t}  ·  Señales: {n_s}  ·  Comandos: {n_c}  ·  "
+                 + (f"Falta completar {pendientes} dato(s) (resaltados en amarillo)" if pendientes else "Nada pendiente"))
+        self.lbl_planos.config(text=texto, foreground="#b45309" if pendientes else "#15803d")
 
     def _preset(self, claves):
         claves = {{"FAT_A1": "A1", "FAT_A2": "A2"}.get(c, c) for c in claves}
@@ -827,6 +898,19 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--autotest":  # prueba sin ventana: genera un protocolo de ejemplo en la carpeta dada
+        datos = dict(CLIENTE="Prueba", NRO_OBRA="1", OBRA="1-Prueba", UBICACION="-", TIPO_TABLERO="Tablero de Control",
+                     NOMBRE="Prueba", FECHA="01/01/2026", REVISION="A")
+        os.makedirs(sys.argv[2], exist_ok=True)
+        resultado = [g.generar(datos, [("plano.pdf", "ESQUEMA FUNCIONAL")], [("RTAC SEL 2241", "")], sys.argv[2], tipo=t)
+                     for t in ("SAT", "FAT")]
+        resultado += [g.generar_anexo1(datos, [("plano.pdf", "ESQUEMA FUNCIONAL")], [("110 VCC", "Alimentación", "Q1")], sys.argv[2], tipo=t)
+                      for t in ("SAT", "FAT")]
+        resultado += [g.generar_anexo2(datos, [("plano.pdf", "ESQUEMA FUNCIONAL")], [("-XFI1/1", "Señal")], [("XF01-2", "Comando")],
+                                       sys.argv[2], tipo=t) for t in ("SAT", "FAT")]
+        with open(os.path.join(sys.argv[2], "autotest.txt"), "w", encoding="utf-8") as salida:
+            salida.write("\n".join(os.path.basename(r) for r in resultado))
+        sys.exit(0)
     if len(sys.argv) == 4 and sys.argv[1] == "--leer-termicas":  # prueba sin ventana: app.exe --leer-termicas plano.pdf salida.txt
         import extraer_pdf
         with open(sys.argv[3], "w", encoding="utf-8") as salida:

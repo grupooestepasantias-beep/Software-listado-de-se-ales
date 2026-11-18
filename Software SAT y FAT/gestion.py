@@ -180,11 +180,6 @@ def cargar_proyecto(ruta):
     return contenido
 
 
-def listar_proyectos():
-    ruta = carpeta_proyectos()
-    return sorted(f for f in os.listdir(ruta) if f.lower().endswith(".json"))
-
-
 # ------------------------------------------------------------------ validación de entradas
 REQUERIDOS = [("CLIENTE", "Cliente"), ("NRO_OBRA", "Nº de obra"), ("OBRA", "Proyecto/Obra"),
               ("UBICACION", "Ubicación"), ("TIPO_TABLERO", "Tipo de tablero"), ("NOMBRE", "Nombre / estación"),
