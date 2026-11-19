@@ -1,0 +1,330 @@
+# PROTOCOLOS FAT Y SAT - PROBLEMAS Y SOLUCIONES
+
+Errores que se pueden cometer al usar el programa (la mayoría son de tipeo o de carga de datos) y cómo se corrigen.
+Cada punto dice: qué ves, por qué pasa y qué hacer. Los mensajes están escritos como aparecen en pantalla.
+
+Si el mensaje que ves no está acá: sacá una captura, copiá el texto y avisá. Para casi todo, la solución segura es corregir
+el dato y volver a tocar "Generar documentos": el programa no genera nada mientras haya algo sin resolver.
+
+
+## A. AL ABRIR EL PROGRAMA
+
+### "Acceso denegado" al abrir el .exe
+Por qué: Windows no deja ejecutar programas directamente desde una carpeta de red.
+Qué hacer: copiá "Protocolos FAT y SAT.exe" a tu PC (Escritorio o C:\Programas) y abrilo desde ahí.
+
+### Windows muestra "Windows protegió su PC"
+Por qué: el programa es interno y no tiene firma digital.
+Qué hacer: tocá "Más información" y luego "Ejecutar de todas formas". Si el antivirus lo bloquea, pedí a Sistemas que
+lo habiliten (es el mismo archivo que está en la carpeta de red).
+
+### Hago doble clic y no pasa nada
+Por qué: la primera vez tarda entre 20 y 40 segundos en mostrar la ventana (se descomprime solo).
+Qué hacer: esperá medio minuto. No hagas doble clic varias veces (se abren varias copias). Si pasó un minuto y no
+apareció, abrí el Administrador de tareas (Ctrl+Shift+Esc), cerrá todos los "Protocolos FAT y SAT" y abrilo de nuevo.
+
+### Se abre más de una ventana
+Por qué: se hizo doble clic más de una vez.
+Qué hacer: cerrá las que sobran. Cada una trabaja por separado.
+
+### Se abrió una versión vieja
+Por qué: se copió el .exe viejo y no el nuevo, o quedó un acceso directo a uno viejo.
+Qué hacer: borrá la copia vieja y copiá de nuevo "Protocolos FAT y SAT.exe" de la carpeta de red.
+
+
+## B. PASO 1 - DATOS DE LA OBRA
+
+Estos mensajes aparecen en un cartel "Revisá los datos" al tocar "Generar documentos".
+
+### "Cliente: es obligatorio." (o Nº de obra, Proyecto/Obra, Ubicación, Tipo de tablero, Nombre / estación, Revisión)
+Por qué: quedó un campo vacío. Es muy común olvidarse de "Ubicación" y de "Nombre / estación".
+Qué hacer: completalo. No hay campos opcionales, salvo el número de serie de los componentes.
+
+### "Fecha: usar el formato dd/mm/aaaa (por ejemplo 02/11/2026)."
+Por qué: la fecha se escribió con otro formato (2026-11-19, 19-11-26, 19/11/26, "hoy", etc.).
+Qué hacer: escribirla con dos cifras para día y mes y cuatro para el año, separadas por barras: 19/11/2026.
+
+### "Revisión: solo letras o números (por ejemplo A, B, C2)."
+Por qué: la revisión tiene espacios, símbolos o más de 3 caracteres ("Rev B", "rB.", "revisión 2").
+Qué hacer: poner solo la letra o el número: B.
+
+### "Nombre / estación: no puede contener \ / : * ? " < > |"
+Por qué: Windows no permite esos símbolos en el nombre de un archivo y el nombre de la estación forma parte del nombre.
+Qué hacer: quitarlos o cambiarlos por un guion.
+
+### "...: demasiado largo (máximo N caracteres)."
+Por qué: un campo supera su límite (Cliente 40, Nº de obra 12, Proyecto/Obra 90, Ubicación 80, Nombre 60).
+Qué hacer: abreviar el texto.
+
+### "...: contiene caracteres no permitidos (llaves o de control)."
+Por qué: se pegó texto desde otro programa con llaves { } o caracteres invisibles.
+Qué hacer: borrar el campo y escribirlo de nuevo a mano (no pegar).
+
+### El nombre de la estación está mal escrito (por ejemplo "Arrolito" en vez de "Arroyito")
+Qué ves: al generar, "El plano es de la estación 'Arroyito' y la obra cargada es 'Arrolito'", seguido de la pregunta
+"Confirmar datos de los PDF".
+Por qué: el programa compara el nombre con el del plano. Una sola letra de diferencia ya bloquea (tildes y
+mayúsculas no importan).
+Qué hacer: respondé "No", corregí el nombre en el Paso 1 y generá de nuevo. Respondé "Sí" solo si el nombre
+distinto es realmente el correcto.
+
+### "El plano pertenece a la obra 205 y se cargó la obra 309"
+Por qué: el número de obra del Paso 1 no es el del plano (o se cargó el plano de otra obra).
+Qué hacer: revisá cuál es el correcto. Corregí el número de obra o cargá el plano que corresponde.
+
+### "La tensión cargada (66/13,2 KV) no coincide con el plano, que nombra 132, 33, 13,2 kV."
+Por qué: quedó la tensión que el programa trae por defecto o la de otra obra.
+Qué hacer: corregí el campo Tensión (por ejemplo 33 KV). Si es correcta aunque el plano diga otra cosa, confirmala.
+
+### El cliente o la obra no se pueden verificar
+Qué ves: un aviso gris "Este plano no trae el número de plano, el número de obra ni el cliente como texto".
+Por qué: algunos planos muestran esos datos como imágenes (logos). El programa no los puede leer.
+Qué hacer: nada que corregir en el programa, pero verificá vos que el cliente y el número de obra cargados sean los correctos.
+
+
+## C. PASO 2 - CARGAR LOS PLANOS
+
+### "PDF no válido: ... El archivo no es un PDF" / "no tiene formato PDF válido" / "está vacío"
+Por qué: se eligió otro tipo de archivo (por ejemplo el .dwg, un .bak, una foto) o un PDF dañado.
+Qué hacer: elegí el PDF. Si es un PDF que no abre en ningún lado, pedí que lo vuelvan a exportar.
+
+### "El PDF no tiene páginas 'DETALLE MODULO DI/DO': no parece un esquema funcional con el formato esperado."
+Por qué: se cargó el plano constructivo (TP) o un plano que no es el funcional.
+Qué hacer: cargá el esquema funcional (EF). El constructivo solo ayuda con las térmicas.
+
+### "Falta el esquema funcional (EF), de donde salen las señales y comandos."
+Por qué: no hay ningún funcional entre los planos cargados.
+Qué hacer: cargá el PDF funcional (el nombre suele llevar "EF", "Ef" o "Funcional").
+
+### "Revisiones incompatibles: funcional en revisión rC y constructivo en revisión rB"
+Por qué: se mezclaron planos de revisiones distintas (muy común cuando en la carpeta hay varias).
+Qué hacer: usá los dos de la misma revisión, la vigente. Revisá la carpeta "Superado": ahí están los viejos.
+
+### "El archivo dice revisión B pero el cuadro de revisiones del plano llega a la C."
+Por qué: se cargó una revisión vieja, o el archivo se renombró mal.
+Qué hacer: cargá la revisión vigente.
+
+### "Los planos tienen números distintos"
+Por qué: el funcional y el constructivo son de tableros distintos.
+Qué hacer: cargá los dos del mismo tablero.
+
+### "Es el mismo archivo que ..."
+Por qué: se cargó dos veces el mismo PDF (o dos copias iguales).
+Qué hacer: dejá uno solo.
+
+### "La portada del plano dice 'E.T. NUEVA CALIFORNIA' y el resto de las hojas dicen 'E.T. LA PAZ'"
+Por qué: es un error del propio plano (portada copiada de otra obra). No es un error del programa.
+Qué hacer: avisá a ingeniería para que corrija el plano. Si ya lo consultaste y es solo la portada, respondé "Sí" en
+"Confirmar datos de los PDF" (queda registrado a tu nombre).
+
+### El programa dice "No se pudo leer ninguna señal ni térmica de estos planos"
+Por qué: el plano tiene un formato que el programa no conoce o es un PDF escaneado (una foto).
+Qué hacer: no carga nada por suposición. Completá las tablas a mano (Paso 3) o consultá si hay otra versión del PDF
+(la exportada desde el CAD).
+
+### La barra de avance tarda muchísimo ("Leyendo los encabezados... (OCR)")
+Por qué: el plano trae partes dibujadas como líneas y el programa las lee como imagen. La primera vez con cada plano
+tarda entre 3 y 10 minutos (depende de la PC).
+Qué hacer: esperar. No cerrar el programa ni apagar la PC. La segunda vez con el mismo plano es inmediato.
+Si lo cerraste a mitad, abrilo y volvé a cargar el plano: empieza de nuevo.
+
+### Se cargó un plano y se perdieron cosas que había escrito a mano
+Qué ves: antes de cargar, el programa pregunta "¿Reemplazar la lista actual?".
+Por qué: si respondés "Sí", las tablas se rehacen desde el plano y se pierde lo que habías editado.
+Qué hacer: respondé "No" si no querés perderlo. Si ya pasó: Proyecto > Abrir proyecto (si lo habías guardado), o
+volvé a escribirlo. El programa no tiene "deshacer".
+
+### Algún dato leído de la imagen está mal (letras raras, un número confundido)
+Por qué: la lectura por OCR no es perfecta (por ejemplo puede confundir una I con un 1).
+Qué hacer: comparalo con el plano y corregilo con doble clic. Todo lo leído por OCR figura en el informe como
+"pendiente de confirmación" justamente para que se verifique.
+
+
+## D. PASO 3 - TABLAS
+
+### Hay filas en amarillo
+No es un error: son los datos que el plano no permite leer y tenés que completar. Doble clic en la celda, escribir y Enter.
+
+### "N señales sin borne (ej.: Falta Tensión Fuente 48 Vcc)."
+Por qué: quedó alguna señal con la columna "Borne / Elemento" vacía o con un texto entre paréntesis
+("(ver hoja 29, módulo 3, terminal 1)").
+Qué hacer: buscá esa señal en el plano y escribí su borne o elemento (por ejemplo -KI3.3, -PW1, -XFI/1). Cuando no
+quede ninguna fila amarilla en el Anexo 2, el cartel desaparece.
+
+### "Falta la tensión nominal esperada de Q12 (el plano no la indica)" / "Falta la descripción del circuito de Q12"
+Por qué: el plano no dice la tensión o la descripción de esa térmica.
+Qué hacer: completá "Grupo" (220 VCA, 110 VCC o 48 VCC) y "Descripción" en la pestaña Anexo 1. Ojo: algunas térmicas
+de 48 V figuran bajo un título de 110 V; la tensión de esas se deja en blanco a propósito para que la pongas vos.
+
+### "No hay térmicas cargadas para el energizado." / "No hay señales cargadas." / "No hay componentes de hardware cargados."
+Por qué: se tildó generar el Anexo 1, el Anexo 2 o un protocolo sin haber cargado los planos o el hardware.
+Qué hacer: cargá los planos (Paso 2) o "Cargar set típico..." en Referencias y hardware.
+
+### "Hay un componente sin nombre." / "Hay una fila sin nombre de archivo." / "Hay una fila sin térmica."
+Por qué: quedó una fila vacía (quedó de "Agregar fila" o de un Duplicar).
+Qué hacer: seleccionala y tocá "Quitar" (o la tecla Supr), o completala.
+
+### "El plano funcional dibuja 10 módulos DI y 5 DO y la tabla de componentes tiene 7 DI y 2 DO."
+Por qué: se usó "Cargar set típico..." con las cantidades por defecto (7 y 2) y el tablero tiene otras.
+Qué hacer: ponelas como dice el plano ("Cargar set típico..." > cantidades), o volvé a cargar los planos, que las recalcula.
+
+### "El modelo ... figura como DI y como DO a la vez."
+Por qué: dos módulos con el mismo modelo (SEL 2244-x) pero uno puesto como DI y otro como DO.
+Qué hacer: corregí el nombre del módulo. Es una decisión técnica: consultá si no sabés cuál es el correcto.
+
+### "El borne ... aparece más de una vez" / "La señal ... está repetida"
+Por qué: se duplicó una fila (con "Duplicar") o hay un borne tipeado dos veces.
+Qué hacer: quitá la repetida. Si el plano realmente lo repite, es una advertencia que se puede dejar.
+
+### Una señal aparece con otro nombre que el del plano
+Qué ves: "...: la tabla dice 'X' y el plano dice 'Y'. Los nombres deben coincidir exactamente con la ingeniería."
+Por qué: se editó el nombre de una señal. Se admiten solo diferencias de tildes y mayúsculas.
+Qué hacer: dejá el nombre como figura en el plano.
+
+### "'...' no figura en el plano cargado (dato sin respaldo)."
+Por qué: se agregó a mano una señal o comando que el plano no tiene.
+Qué hacer: quitala, o cargá el plano que la contiene. El programa no permite señales inventadas.
+
+### "Falta en la tabla: ... (plano ..., página N)"
+Por qué: se borró una fila por error.
+Qué hacer: volvé a cargar los planos para recuperarla (te pregunta si reemplazar la lista), o agregá la fila a mano.
+
+### "La térmica -Q99 no figura en los planos cargados (dato sin respaldo)." / "La térmica -Q12 está en el plano ... y falta en el Anexo 1."
+Por qué: se agregó una térmica que el plano no tiene, o se borró una que sí tiene (o está mal escrita: Q1 en lugar de Q12).
+Qué hacer: dejá exactamente las térmicas que figuran en el plano, con el mismo nombre.
+
+### "-Q1: la tabla dice 220 VCA y el plano indica 110 VCC."
+Por qué: se escribió una tensión distinta a la que dice el plano para esa térmica.
+Qué hacer: corregí el Grupo en la pestaña Anexo 1 con la tensión del plano.
+
+### Borré filas por error
+No hay "deshacer". Si habías guardado el proyecto, Proyecto > Abrir proyecto. Si no, volvé a cargar los planos
+(respondé "Sí" a reemplazar la lista) y completá de nuevo lo que escribiste a mano.
+
+
+## E. PASO 4 - GENERAR
+
+### "Marcá al menos un documento para generar."
+Por qué: todas las casillas están destildadas. Marcá alguna o usá "Solo SAT", "FAT completo" o "Paquete completo".
+
+### "Elegí primero una carpeta de salida que exista." / "La carpeta de salida no existe."
+Por qué: no se eligió la carpeta, o se escribió una ruta que no existe (o se borró).
+Qué hacer: tocá "Elegir..." y elegí una carpeta existente.
+
+### "No se pudo guardar. ¿Algún documento está abierto en Word? Cerralo y reintentá."
+Por qué: Word tiene abierto uno de los documentos que se quieren reemplazar (Word los bloquea).
+Qué hacer: cerrá los documentos en Word y generá de nuevo. También puede pasar si no tenés permiso de escritura en esa carpeta
+o si la carpeta de red se desconectó: probá con una carpeta de tu PC.
+
+### Marqué SAT y se generaron tres archivos
+No es un error: "SAT" incluye su Anexo 1 y su Anexo 2. El FAT es distinto: el protocolo y cada anexo se marcan por separado.
+
+### "Ya existen documentos" (pregunta)
+Por qué: en esa carpeta ya hay documentos con el mismo nombre (misma obra, tablero y revisión).
+Qué hacer: respondé "Sí" para reemplazarlos (los anteriores se guardan en la carpeta "versiones") o "No" para cancelar.
+Para no pisarlos, cambiá la revisión o elegí otra carpeta.
+
+### Me equivoqué y reemplacé un documento
+Herramientas > "Versiones anteriores de un documento..." > elegís el documento actual > elegís la versión > Restaurar.
+La versión que reemplazás también se guarda.
+
+### "No se puede generar todavía" con una lista de problemas
+Por qué: hay datos que faltan o no coinciden con el plano. No se genera nada hasta resolverlo.
+Qué hacer: leé la lista, corregí cada punto (en esta guía está el detalle de los mensajes) y generá de nuevo. La pestaña
+"Control de calidad" muestra la misma lista con colores.
+
+### El programa se queda en "Actualizando índices y números de página con Word..."
+Por qué: Word está abriendo los documentos y puede estar esperando una respuesta (un cartel escondido detrás, por ejemplo
+"recuperar documentos" o una pantalla de activación).
+Qué hacer: buscá Word en la barra de tareas, contestá o cerrá el cartel. Si no hay forma, cerrá Word desde el Administrador
+de tareas y volvé a generar.
+
+### "No se pudo actualizar el índice ni exportar el PDF con Word"
+Por qué: Word no está instalado, no abrió, o falló.
+Qué hacer: abrí Word una vez a mano y verificá que funcione; cerrá todos los Word y generá de nuevo.
+Como solución de emergencia: abrí cada documento, hacé clic derecho sobre el índice > "Actualizar campo" (o F9) y guardalo como PDF a mano.
+
+### El resultado dice "NO LISTO PARA ENTREGAR" y el ZIP empieza con "BORRADOR - "
+Por qué: el control de calidad encontró problemas (bloqueantes o advertencias) o Word no pudo actualizar el índice.
+Qué hacer: abrí la pestaña "Control de calidad", leé cada fila roja y amarilla (doble clic para ver el detalle y la
+solución), corregí y volvé a generar. No entregues un paquete "BORRADOR".
+
+### Aparecen filas grises que dicen "PENDIENTE DE CONFIRMACIÓN"
+No es un error. Son datos del protocolo que el plano no permite verificar (modelos de equipos, valores del ensayo dieléctrico,
+datos leídos por OCR, etc.). Hay que pasarlos a ingeniería para que los confirme.
+
+### "Error: ..." con un texto en inglés o con letras raras
+Por qué: error inesperado.
+Qué hacer: sacá una captura del cartel completo, anotá qué estabas haciendo, y avisá. Mientras tanto, cerrá el programa,
+volvelo a abrir y repetí (guardá el proyecto antes, si podés).
+
+
+## F. WORD Y LOS DOCUMENTOS GENERADOS
+
+### El índice dice "Índice: se completa al generar..." o los números de página están mal
+Por qué: Word no pudo actualizar el índice (ver "No se pudo actualizar el índice").
+Qué hacer: abrir el documento en Word, clic derecho sobre el índice > "Actualizar campo" > "Actualizar todo el índice".
+
+### Cambié algo en el Word a mano y después regeneré: se perdió
+Por qué: regenerar reemplaza el documento por uno nuevo.
+Qué hacer: la versión anterior está en la carpeta "versiones" (Herramientas > Versiones anteriores). Para evitarlo,
+hacé los cambios a mano en la copia final, después de generar, o cargá los datos correctos antes de generar.
+
+### Los números de serie de los componentes quedaron vacíos
+No es un error: se completan a mano en el ensayo. Si querés cargarlos antes, escribilos en la columna "Número de serie".
+
+### El SAT menciona "Anexo 1" y "Anexo 2" y los quiero aparte
+Los anexos del SAT se generan siempre con el SAT (Paquete completo o "Solo SAT"). Si solo querés el FAT, usá "FAT completo".
+
+### Las fechas del FAT y del SAT son distintas
+La ventana tiene una sola fecha, que se usa en todos los documentos de esa generación. Generá primero uno (por ejemplo el FAT)
+con su fecha, y después cambiá la fecha y generá el otro (el SAT). Como los nombres de archivo dicen FAT o SAT, no se pisan.
+
+
+## G. PROYECTOS Y CONFIGURACIÓN
+
+### "No se pudo abrir el proyecto" / "El archivo no es un proyecto del generador de protocolos."
+Por qué: se eligió un archivo que no es un proyecto guardado por este programa.
+Qué hacer: abrí un archivo .json que hayas guardado con Proyecto > Guardar.
+
+### "El proyecto fue creado con una versión más nueva del programa."
+Qué hacer: actualizá el programa (copiá el .exe nuevo de la carpeta de red).
+
+### No encuentro mis proyectos
+Se guardan, por defecto, en C:\Users\TU_USUARIO\AppData\Roaming\Protocolos FAT y SAT\proyectos. Esa carpeta es oculta:
+pegá esa ruta en la barra de direcciones del Explorador. Cada usuario de Windows tiene la suya.
+
+### Al abrir el programa los datos son los de la obra anterior
+Es a propósito: recuerda los últimos datos. Proyecto > Nuevo proyecto los vacía; y cambiá el Nombre, el Nº de obra y la Revisión.
+Es muy común generar una obra nueva con el número de obra o el nombre de la anterior: verificá el Paso 1 antes de generar.
+
+### Quiero empezar de cero con la configuración
+Cerrá el programa y borrá la carpeta C:\Users\TU_USUARIO\AppData\Roaming\Protocolos FAT y SAT. Se crea de nuevo al abrirlo.
+
+
+## H. ERRORES HUMANOS MÁS FRECUENTES (RESUMEN)
+
+1. Dejar el Nombre/estación, la Ubicación o la Revisión sin completar o mal escritos.
+2. Escribir la fecha en otro formato que dd/mm/aaaa.
+3. Dejar el Nº de obra, el Nombre o la Tensión de la obra anterior.
+4. Cargar planos de revisiones distintas (o un plano viejo de la carpeta "Superado").
+5. Cargar el constructivo en lugar del funcional, o un .dwg / .bak en lugar del PDF.
+6. Responder "Sí" a "¿Reemplazar la lista actual?" sin querer y perder lo escrito a mano.
+7. Editar o borrar filas de las tablas y olvidarse de que el plano es la fuente de la verdad.
+8. Generar con los Word abiertos.
+9. Entregar un paquete "BORRADOR" o "NO LISTO PARA ENTREGAR".
+10. Abrir el .exe desde la red en vez de copiarlo a la PC.
+11. Cerrar el programa mientras lee el plano por OCR (hay que esperar a que termine).
+12. Marcar "FAT Anexo 1" o "FAT Anexo 2" y olvidarse del protocolo FAT (cada uno es un archivo aparte).
+13. Confirmar con "Sí" una diferencia con el plano sin consultar si de verdad está bien.
+
+
+## I. ANTES DE ENTREGAR (LISTA DE CONTROL)
+
+[ ] El Paso 1 tiene la obra, la estación, la tensión y la revisión correctas.
+[ ] Los planos cargados son los vigentes (misma revisión).
+[ ] No quedan filas amarillas en el Anexo 1 ni en el Anexo 2.
+[ ] El resultado dice "LISTO PARA ENTREGAR" (no "BORRADOR").
+[ ] Se revisaron los "PENDIENTE DE CONFIRMACIÓN" con ingeniería.
+[ ] Se abrió cada Word: índice y números de página correctos, nombre de la estación bien escrito, firmas.
+[ ] Los PDF se ven bien.
