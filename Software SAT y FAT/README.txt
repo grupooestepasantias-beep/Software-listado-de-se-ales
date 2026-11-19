@@ -1,11 +1,14 @@
-# PROTOCOLOS FAT Y SAT - INSTRUCTIVO DE USO
+﻿==============================================================================
+PROTOCOLOS FAT Y SAT - INSTRUCTIVO DE USO
+==============================================================================
 
-Nota para quien lo baja de GitHub: acá están el código (carpeta `App`) y los dos instructivos. El programa listo para usar, `Protocolos FAT y SAT.exe` (160 MB, más de lo que GitHub deja subir a un repositorio), está en la carpeta de red `\\192.168.15.101\Archivos\PasantiasMM\Programas terminados\App FAT y SAT`; también se genera con `App\compilar_exe.bat`.
+Nota para quien lo baja de GitHub: acá están el código (carpeta App) y los dos instructivos. El programa listo para usar, Protocolos FAT y SAT.exe (160 MB, más de lo que GitHub deja subir a un repositorio), está en la carpeta de red \\192.168.15.101\Archivos\PasantiasMM\Programas terminados\App FAT y SAT; también se genera con App\compilar_exe.bat.
 
-Para quien nunca usó el programa. Si algo falla, mirá el archivo "PROBLEMAS Y SOLUCIONES.md" (está en esta misma carpeta).
+Para quien nunca usó el programa. Si algo falla, mirá el archivo "PROBLEMAS Y SOLUCIONES.txt" (está en esta misma carpeta).
 
-
-## 1. Qué hace este programa
+------------------------------------------------------------------------------
+1. Qué hace este programa
+------------------------------------------------------------------------------
 
 Arma los protocolos de ensayo de Grupo Oeste en Word, listos para revisar y entregar:
 
@@ -19,8 +22,9 @@ no cierra con el plano.
 Importante: el programa controla que el documento esté bien armado y que coincida con el plano. NO reemplaza la revisión
 técnica de ingeniería (valores, normas, modelos de equipos).
 
-
-## 2. Qué necesitás
+------------------------------------------------------------------------------
+2. Qué necesitás
+------------------------------------------------------------------------------
 
 - Una PC con Windows.
 - Microsoft Word instalado (lo usa para armar el índice, numerar las páginas y sacar el PDF). Sin Word el programa
@@ -28,8 +32,9 @@ técnica de ingeniería (valores, normas, modelos de equipos).
 - Los planos de la obra en PDF: el esquema funcional (EF) y, si es un archivo aparte, el constructivo (TP).
 - Una carpeta donde guardar los documentos (mejor una carpeta corta, por ejemplo C:\Protocolos\Obra205).
 
-
-## 3. Cómo abrirlo (primera vez)
+------------------------------------------------------------------------------
+3. Cómo abrirlo (primera vez)
+------------------------------------------------------------------------------
 
 1. En esta carpeta está el archivo "Protocolos FAT y SAT.exe".
 2. NO lo abras desde la red: Windows suele dar "Acceso denegado" y, aunque abra, tarda mucho.
@@ -40,8 +45,9 @@ técnica de ingeniería (valores, normas, modelos de equipos).
 
 Para actualizar el programa, copiá otra vez el .exe nuevo sobre el viejo.
 
-
-## 4. La ventana
+------------------------------------------------------------------------------
+4. La ventana
+------------------------------------------------------------------------------
 
 La ventana está dividida en 4 pasos, de arriba hacia abajo:
 
@@ -52,10 +58,11 @@ La ventana está dividida en 4 pasos, de arriba hacia abajo:
 
 Arriba hay tres menús: Proyecto, Herramientas y Ayuda. En Ayuda > "Cómo se usa (4 pasos)" tenés un resumen.
 
+------------------------------------------------------------------------------
+5. Paso a paso
+------------------------------------------------------------------------------
 
-## 5. Paso a paso
-
-### Paso 1 - Datos de la obra
+>> Paso 1 - Datos de la obra
 
 Completá cada campo. Los marcados como obligatorios no pueden quedar vacíos.
 
@@ -72,7 +79,7 @@ Completá cada campo. Los marcados como obligatorios no pueden quedar vacíos.
 
 El programa recuerda los últimos datos que usaste.
 
-### Paso 2 - Planos de ingeniería
+>> Paso 2 - Planos de ingeniería
 
 1. Tocá el botón "Cargar planos (1 o 2 PDF)...".
 2. Elegí el PDF del esquema funcional. Si el constructivo es otro archivo, elegí los dos a la vez
@@ -87,7 +94,7 @@ El programa recuerda los últimos datos que usaste.
    - Texto en verde: nada pendiente.
    - Texto en naranja: hay datos para completar a mano (paso 3).
 
-### Paso 3 - Revisar y completar
+>> Paso 3 - Revisar y completar
 
 Hay cuatro pestañas:
 
@@ -119,7 +126,7 @@ Qué completar:
   "pendiente de confirmación" en el informe.
 - Los nombres de las señales deben quedar IGUALES a los del plano. Solo se toleran diferencias de tildes.
 
-### Paso 4 - Qué generar y dónde guardarlo
+>> Paso 4 - Qué generar y dónde guardarlo
 
 1. Marcá lo que querés generar:
    - SAT (protocolo + Anexo 1 + Anexo 2): genera los tres archivos del SAT.
@@ -138,8 +145,9 @@ Si hay diferencias entre lo que cargaste y el plano que solo vos podés decidir 
 aparece "Confirmar datos de los PDF". Si estás seguro de que está bien, respondé "Sí": queda registrado a tu nombre.
 Si no estás seguro, respondé "No", corregí el dato y generá de nuevo.
 
-
-## 6. Qué se genera
+------------------------------------------------------------------------------
+6. Qué se genera
+------------------------------------------------------------------------------
 
 En la carpeta de salida aparecen:
 
@@ -155,8 +163,9 @@ En la carpeta de salida aparecen:
 - La carpeta "versiones": copias de documentos anteriores (ver más abajo).
 - "registro_operaciones.jsonl": un registro de cada vez que se generó algo (fecha, usuario, archivos).
 
-
-## 7. Cómo leer el resultado (pestaña "Control de calidad")
+------------------------------------------------------------------------------
+7. Cómo leer el resultado (pestaña "Control de calidad")
+------------------------------------------------------------------------------
 
 Después de generar, el programa abre esa pestaña y escribe arriba un resumen, por ejemplo
 "LISTO PARA ENTREGAR - 0 bloqueantes, 0 advertencias, 19 informativos".
@@ -173,8 +182,9 @@ Cada fila de la lista tiene una gravedad, con su color:
 
 Doble clic en una fila para ver el detalle y la solución sugerida. "Exportar informe..." lo guarda como texto.
 
-
-## 8. Guardar y retomar un trabajo
+------------------------------------------------------------------------------
+8. Guardar y retomar un trabajo
+------------------------------------------------------------------------------
 
 Menú Proyecto:
 - Guardar proyecto / Guardar proyecto como...: guarda todo lo cargado (datos, tablas, opciones) en un archivo.
@@ -184,23 +194,26 @@ Menú Proyecto:
 Los proyectos se guardan en tu usuario de Windows, en C:\Users\TU_USUARIO\AppData\Roaming\Protocolos FAT y SAT\proyectos
 (si no elegís otra carpeta).
 
-
-## 9. Menú Herramientas
+------------------------------------------------------------------------------
+9. Menú Herramientas
+------------------------------------------------------------------------------
 
 - Controlar documentos existentes...: elegís uno o varios Word ya hechos (del mismo proyecto) y los revisa como si
   los hubieras generado ahora.
 - Versiones anteriores de un documento...: si regeneraste un documento y querés volver a uno anterior.
 - Ver registro de operaciones: quién generó qué y cuándo, en la carpeta de salida elegida.
 
-
-## 10. Si generás de nuevo un documento que ya existe
+------------------------------------------------------------------------------
+10. Si generás de nuevo un documento que ya existe
+------------------------------------------------------------------------------
 
 El programa pregunta "Ya existen documentos". Si respondés que sí, el anterior NO se pierde: se guarda en la carpeta
 "versiones" (con fecha y hora en el nombre) y el nuevo ocupa su lugar. Se recupera desde Herramientas > Versiones anteriores.
 Antes de regenerar, cerrá los Word que estén abiertos.
 
-
-## 11. Buenas costumbres
+------------------------------------------------------------------------------
+11. Buenas costumbres
+------------------------------------------------------------------------------
 
 - Cargá siempre los planos de la MISMA revisión (EF y TP con la misma letra).
 - Revisá que el nombre de la estación, el número de obra y la tensión sean los de la obra.
@@ -211,8 +224,9 @@ Antes de regenerar, cerrá los Word que estén abiertos.
 - La fecha de la ventana es una sola: si el FAT y el SAT van con fechas distintas, generalos por separado.
 - Guardá el proyecto (Proyecto > Guardar) antes de cerrar si pensás retomarlo.
 
-
-## 12. Dónde está cada cosa
+------------------------------------------------------------------------------
+12. Dónde está cada cosa
+------------------------------------------------------------------------------
 
 - El programa listo para usar: "Protocolos FAT y SAT.exe" (esta carpeta).
 - El código fuente: carpeta "App" (solo para quien modifica el programa; el README de esa carpeta es técnico).
@@ -221,5 +235,4 @@ Antes de regenerar, cerrá los Word que estén abiertos.
 - Lo ya leído por OCR de cada plano: C:\Users\TU_USUARIO\AppData\Local\GeneradorSAT\cache_ocr
   (si se borra, se vuelve a leer y tarda de nuevo).
 
-Ante cualquier error que no figure en "PROBLEMAS Y SOLUCIONES.md", sacá una captura del mensaje y avisá.
-
+Ante cualquier error que no figure en "PROBLEMAS Y SOLUCIONES.txt", sacá una captura del mensaje y avisá.
