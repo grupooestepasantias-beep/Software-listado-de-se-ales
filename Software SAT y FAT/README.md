@@ -1,4 +1,6 @@
-﻿# PROTOCOLOS FAT Y SAT - INSTRUCTIVO DE USO
+# PROTOCOLOS FAT Y SAT - INSTRUCTIVO DE USO
+
+Nota para quien lo baja de GitHub: acá están el código (carpeta `App`) y los dos instructivos. El programa listo para usar, `Protocolos FAT y SAT.exe` (160 MB, más de lo que GitHub deja subir a un repositorio), está en la carpeta de red `\\192.168.15.101\Archivos\PasantiasMM\Programas terminados\App FAT y SAT`; también se genera con `App\compilar_exe.bat`.
 
 Para quien nunca usó el programa. Si algo falla, mirá el archivo "PROBLEMAS Y SOLUCIONES.md" (está en esta misma carpeta).
 
