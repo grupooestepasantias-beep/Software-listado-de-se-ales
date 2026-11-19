@@ -1,0 +1,174 @@
+PROBLEMAS COMUNES Y COMO SOLUCIONARLOS
+======================================
+
+Errores humanos y situaciones frecuentes, con la forma de arreglarlos.
+Antes de tocar cualquier cosa grande: hacer una copia de "documentos.db" y del Excel.
+
+
+A. EXCEL
+--------
+1) "No pude escribir en el Excel" / "Excel abierto"
+   Causa: el Excel esta abierto (en tu PC o en la de otra persona, si esta en red).
+   Solucion: cerrar el Excel y volver a apretar "Guardar cambios". Los datos ya
+   quedaron en la app; al guardar de nuevo se pasan al Excel. Si se cerro el
+   programa antes, abrirlo y repetir el guardado del documento.
+
+2) "No encuentro el Excel vinculado"
+   Causa: el archivo se movio, se renombro o la carpeta de red no esta conectada.
+   Solucion: volver a poner el archivo en su lugar, o pestaña 1 -> "Vincular /
+   cambiar Excel..." y elegir el archivo actual.
+
+3) Borre una hoja Rev del Excel sin querer (o la borre a proposito)
+   Solucion: "Sincronizar con Excel" (arriba). La app detecta que la ultima hoja
+   es menor a su revision y ofrece volver a esa. Se hace copia de seguridad antes.
+   Si fue un error y la hoja se necesitaba: recuperarla desde la carpeta
+   "respaldos" (junto al Excel) y volver a vincular.
+
+4) El Excel quedo mal despues de una operacion
+   Solucion: en la carpeta "respaldos" junto al Excel hay una copia hecha ANTES de
+   cada modificacion. Copiarla encima del Excel (con el Excel cerrado).
+
+5) Edite el Excel a mano y la app no lo refleja
+   La app es la que manda: la proxima vez que guardes, pisa la hoja de la ultima
+   revision con lo que tiene en la app. Cambios manuales en esa hoja se pierden.
+   Solucion: hacer los cambios desde la pestaña 3, o importar de nuevo el Excel
+   (pestaña 1 -> "Importar Excel de control...").
+
+6) Importe el Excel equivocado
+   Solucion: volver a importar el correcto. Si se mezclaron proyectos, borrar la
+   base (ver punto F) solo si no hay datos valiosos, o crear un proyecto nuevo e
+   importar ahi.
+
+7) La hoja KPI / Dashboard tiene datos viejos o vacios
+   Solucion: cargar las fechas en la pestaña 3 y despues pestaña 1 -> "Generar KPI y
+   Dashboard en el Excel". El maximo/promedio de desvio del KPI N°1 se calcula
+   con las formulas del Excel: abrirlo y dejar que recalcule.
+
+
+B. REVISIONES Y ESTADOS
+-----------------------
+8) Cree una "Nueva revision" sin querer / por error
+   Causa: la nueva revision se crea solo cuando se entregan archivos.
+   Solucion: en el Excel borrar la hoja "Rev (N)" de mas y usar "Sincronizar con
+   Excel": la app vuelve a la revision anterior. Los documentos conservan el
+   estado actual.
+
+9) Modifique la revision equivocada
+   Causa: estaba parado en una revision vieja en "Revision de la lista".
+   Solucion: verificar SIEMPRE que "Revision de la lista" diga la ultima antes de
+   guardar. Si ya se guardo, volver a cargar los valores correctos en esa revision.
+
+10) La revision quedo en "B" pero el documento ya esta aprobado (o al reves)
+    Causa: se cargo el estado pero no se apreto "Subir", o se escribio a mano.
+    Solucion: pestaña 3 -> elegir el documento -> corregir revision (A, B... si hay
+    observaciones; 0, 1... si esta aprobado) -> "Guardar cambios".
+    Regla: A -> B -> C mientras haya observaciones; APROBADO limpio pasa a 0, luego
+    1, 2... "Aprobado c/obs" sigue en letras.
+
+11) Puse "entregado" a un documento que no se entrego
+    Solucion: pestaña 3 -> destildar "Documento entregado" -> borrar la fecha real
+    de entrega -> "Guardar cambios".
+
+12) El estado quedo sin revision (solo dice "APC" y no A/B/0/1)
+    Solucion: elegir el documento en la pestaña 3, completar las revisiones y
+    guardar. Si vino de un informe, revisar que el PDF tenga la revision en la tabla.
+
+13) Aplique un informe y quedo todo mal
+    Solucion: no hay deshacer global. Restaurar la copia de "documentos.db" y del
+    Excel (carpeta "respaldos") y volver a cargar el informe correcto.
+    Prevencion: revisar la lista propuesta antes de "Aplicar al control" y
+    desmarcar lo que no corresponda.
+
+14) "Aprobado con observaciones" aparece como APC (verde)
+    Debe aparecer como "APROBADO C/OBS" en amarillo. Si pasa, corregirlo a mano
+    en la pestaña 3 y avisar a quien mantiene el programa.
+
+
+C. INFORME DE INGENIERIA (PDF)
+------------------------------
+15) "El informe es mas viejo que el ultimo aplicado" (bloqueado)
+    Causa: se esta cargando un informe de numero menor a uno ya aplicado.
+    Solucion: es una proteccion. Cargar el informe mas nuevo. Si de verdad hay que
+    usar el viejo, restaurar la copia de la base anterior a ese informe.
+
+16) El PDF no se lee o no propone cambios
+    Causas posibles: PDF escaneado como imagen (sin texto), tabla con otro
+    formato, o archivo danado.
+    Solucion: abrir el PDF y comprobar que se pueda seleccionar el texto. Si es
+    imagen, pedir el PDF original. Como alternativa, actualizar los documentos
+    a mano en la pestaña 3.
+
+17) Algunos documentos del informe no aparecen
+    Causa: ese codigo no esta cargado en el listado de la obra.
+    Solucion: pestaña 1 -> cargar el documento a mano o el listado general, y
+    volver a cargar el informe.
+
+
+D. FECHAS Y KPI
+---------------
+18) Fecha invalida / el KPI no calcula
+    Causa: fecha con otro formato (2025-03-10, 10-3-25, texto).
+    Solucion: escribir siempre dd/mm/aaaa (ej.: 10/03/2025).
+
+19) El KPI N°2 no muestra un documento devuelto
+    Causa: falta tildar "Correccion", elegir la "Revision devuelta" o cargar la
+    fecha de devolucion.
+    Solucion: pestaña 3 -> completar la seccion y guardar.
+
+20) KPI N°1 muestra desvio negativo o raro
+    Causa: fecha limite y fecha real invertidas o mal cargadas.
+    Solucion: revisar ambas fechas del documento en la pestaña 3.
+
+
+E. USUARIOS Y ACCESO
+--------------------
+21) Olvide la contraseña del Admin
+    Solucion: abrir PowerShell en la carpeta del .exe y ejecutar:
+       & ".\Control de documentos.exe" --reset-usuarios
+    Las claves vuelven a las de fabrica (ver instructivo, punto 3). Cambiarlas
+    enseguida con el boton "Usuarios".
+
+22) No veo las pestañas 1 y 3
+    Causa: el usuario es de consulta o gerencia.
+    Solucion: entrar con el usuario Admin.
+
+23) Escribi mal la contraseña
+    El programa avisa "Contraseña incorrecta". Reintentar, cuidando mayusculas y
+    el idioma del teclado.
+
+
+F. BASE DE DATOS Y PROGRAMA
+---------------------------
+24) El programa no abre / se cierra solo
+    Solucion: probar ejecutarlo como administrador o desde una carpeta propia
+    (Documentos). Verificar que el antivirus no lo bloquee. Si "documentos.db" esta
+    dañado, renombrarlo y restaurar una copia; si no hay copia, empezar con base
+    nueva e importar el Excel de control otra vez (se recupera casi todo).
+
+25) Perdi mis datos / abri el programa y esta vacio
+    Causa: se ejecuto el .exe desde otra carpeta, por lo que creo un
+    "documentos.db" nuevo vacio.
+    Solucion: ejecutarlo desde la carpeta que tiene el "documentos.db" original, o
+    copiar ese archivo junto al .exe que se esta usando.
+
+26) Dos personas modificaron lo mismo
+    Causa: cada una usa su propia base, asi que los datos divergen.
+    Solucion: elegir UNA persona (Admin) para cargar y modificar; los demas usan
+    usuarios de consulta o reciben el Excel actualizado.
+
+27) Ejecute el .exe desde la carpeta de red y da errores o lentitud
+    Solucion: copiarlo a la PC y trabajar ahi. No compartir "documentos.db" por red.
+
+28) Mensaje de Windows "editor desconocido"
+    Es normal (el programa no esta firmado). "Mas informacion" -> "Ejecutar de
+    todas formas".
+
+
+G. BUENAS PRACTICAS PARA EVITAR PROBLEMAS
+-----------------------------------------
+- Cerrar el Excel antes de guardar en la app.
+- Mirar la revision seleccionada arriba antes de modificar.
+- Copia de "documentos.db" semanal y antes de cargar un informe.
+- Un solo Admin cargando datos.
+- Revisar lo que propone el informe antes de aplicarlo.
+- No renombrar ni mover el Excel vinculado (o volver a vincularlo si se mueve).

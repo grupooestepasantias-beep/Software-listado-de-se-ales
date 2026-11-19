@@ -1,0 +1,3696 @@
+CONTROL DE DOCUMENTOS - CODIGO COMPLETO DE LA APP
+=================================================
+Este archivo reune todo el codigo fuente. Para modificar la app:
+ 1. Crear una carpeta y guardar cada seccion de abajo como un archivo con el nombre indicado
+    (entre las lineas "
+
+
+
+
+
+##### ARCHIVO: requirements.txt #####
+
+openpyxl
+pymupdf
+
+##### FIN DE requirements.txt #####
+
+
+##### ARCHIVO: db.py #####
+
+"""Base de datos (SQLite) + reglas de revisión + importación/exportación de Excel."""
+import hashlib
+import hmac
+import os
+import re
+import sqlite3
+import sys
+import unicodedata
+from datetime import datetime, date
+from pathlib import Path
+
+# Como .exe, la base se guarda al lado del programa (no en la carpeta temporal donde PyInstaller lo descomprime).
+_CARPETA = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+DB_PATH = _CARPETA / "documentos.db"
+
+CAMPOS_ESTADO = ["entregado", "rev_grupo", "rev_cliente", "rev_epen",
+                 "estado_cliente", "estado_epen", "comentarios"]
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS proyectos (
+    nombre TEXT PRIMARY KEY,
+    cliente TEXT NOT NULL DEFAULT '',
+    lista_actual INTEGER NOT NULL DEFAULT 1,
+    archivo_excel TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS documentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proyecto TEXT NOT NULL DEFAULT '',
+    cliente TEXT NOT NULL DEFAULT '',
+    cod_cliente TEXT NOT NULL DEFAULT '',
+    cod_epen TEXT NOT NULL DEFAULT '',
+    titulo TEXT NOT NULL DEFAULT '',
+    responsable TEXT NOT NULL DEFAULT '',
+    fecha_limite_go TEXT NOT NULL DEFAULT '',
+    fecha_limite_cliente TEXT NOT NULL DEFAULT '',
+    nuestro INTEGER NOT NULL DEFAULT 1,
+    entregado INTEGER NOT NULL DEFAULT 0,
+    rev_grupo TEXT NOT NULL DEFAULT '',
+    rev_cliente TEXT NOT NULL DEFAULT '',
+    rev_epen TEXT NOT NULL DEFAULT '',
+    estado_cliente TEXT NOT NULL DEFAULT '',
+    estado_epen TEXT NOT NULL DEFAULT '',
+    comentarios TEXT NOT NULL DEFAULT '',
+    actualizado TEXT NOT NULL DEFAULT '',
+    fecha_real TEXT NOT NULL DEFAULT '',
+    transmittal TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS ciclos (
+    documento_id INTEGER NOT NULL REFERENCES documentos(id) ON DELETE CASCADE,
+    rev TEXT NOT NULL DEFAULT '',
+    fecha_devolucion TEXT NOT NULL DEFAULT '',
+    fecha_reenvio TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (documento_id, rev)
+);
+CREATE TABLE IF NOT EXISTS historial (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    documento_id INTEGER NOT NULL REFERENCES documentos(id) ON DELETE CASCADE,
+    lista_n INTEGER,
+    fecha TEXT NOT NULL DEFAULT '',
+    origen TEXT NOT NULL DEFAULT '',
+    entregado INTEGER NOT NULL DEFAULT 0,
+    rev_grupo TEXT NOT NULL DEFAULT '',
+    rev_cliente TEXT NOT NULL DEFAULT '',
+    rev_epen TEXT NOT NULL DEFAULT '',
+    estado_cliente TEXT NOT NULL DEFAULT '',
+    estado_epen TEXT NOT NULL DEFAULT '',
+    comentarios TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS usuarios (
+    nombre TEXT PRIMARY KEY,
+    rol TEXT NOT NULL,
+    sal TEXT NOT NULL,
+    clave TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS clientes (nombre TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS config (clave TEXT PRIMARY KEY, valor TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS ix_doc_epen ON documentos(cod_epen);
+CREATE INDEX IF NOT EXISTS ix_hist_doc ON historial(documento_id);
+"""
+
+
+# ---------------------------------------------------------------- utilidades
+def _norm(t):
+    """Minúsculas y sin acentos: 'senales' encuentra 'SEÑALES'."""
+    t = unicodedata.normalize("NFD", str(t or "").lower())
+    return "".join(c for c in t if unicodedata.category(c) != "Mn")
+
+
+def _txt(v):
+    if v is None:
+        return ""
+    if isinstance(v, (datetime, date)):
+        return v.strftime("%d/%m/%Y")
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v).strip()
+
+
+def _ahora():
+    return datetime.now().strftime("%d/%m/%Y %H:%M")
+
+
+def _hoy():
+    return datetime.now().strftime("%d/%m/%Y")
+
+
+def parse_fecha(v):
+    """'13/05/2026', '13/5/26', datetime o date -> date; vacío o ilegible -> None."""
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    m = re.fullmatch(r"\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})\s*", str(v or ""))
+    if not m:
+        return None
+    d, mes, a = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    a += 2000 if a < 100 else 0
+    try:
+        return date(a, mes, d)
+    except ValueError:
+        return None
+
+
+def norm_fecha(v):
+    """Texto de fecha normalizado a dd/mm/aaaa ('' si está vacío). ValueError si no se entiende."""
+    if str(v or "").strip() == "":
+        return ""
+    f = parse_fecha(v)
+    if not f:
+        raise ValueError(f"Fecha no válida: «{v}». Usá el formato dd/mm/aaaa.")
+    return f.strftime("%d/%m/%Y")
+
+
+def _parche_openpyxl():
+    """Excel guarda los gráficos de anillo con «tamaño del agujero» 0, que openpyxl rechaza: sin este parche
+    no se puede ni abrir un Excel que tenga esos gráficos."""
+    try:
+        from openpyxl.chart.pie_chart import DoughnutChart
+        DoughnutChart.holeSize.min = 0
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def cargar_libro(ruta, **kw):
+    from openpyxl import load_workbook
+    _parche_openpyxl()
+    return load_workbook(ruta, **kw)
+
+
+# ---------------------------------------------------------------- ciclos de corrección (DPC)
+def ciclo(con, doc_id, rev):
+    return con.execute("SELECT * FROM ciclos WHERE documento_id=? AND rev=?", (doc_id, _txt(rev))).fetchone()
+
+
+def ciclos_doc(con, doc_id):
+    return con.execute("SELECT * FROM ciclos WHERE documento_id=? ORDER BY rev", (doc_id,)).fetchall()
+
+
+def guardar_ciclo(con, doc_id, rev, devolucion, reenvio, pisar=True):
+    """Fechas de un ciclo de corrección: el documento volvió con DPC en la revisión `rev` (fecha de devolución)
+    y se reenvió corregido (fecha de reenvío). Con pisar=False solo completa lo que está vacío."""
+    rev = _txt(rev)
+    devolucion, reenvio = norm_fecha(devolucion), norm_fecha(reenvio)
+    actual = ciclo(con, doc_id, rev)
+    if actual is None:
+        if devolucion or reenvio:
+            con.execute("INSERT INTO ciclos(documento_id,rev,fecha_devolucion,fecha_reenvio) VALUES (?,?,?,?)",
+                        (doc_id, rev, devolucion, reenvio))
+    else:
+        dev = devolucion if (pisar or not actual["fecha_devolucion"]) and (devolucion or pisar) else actual["fecha_devolucion"]
+        rei = reenvio if (pisar or not actual["fecha_reenvio"]) and (reenvio or pisar) else actual["fecha_reenvio"]
+        con.execute("UPDATE ciclos SET fecha_devolucion=?, fecha_reenvio=? WHERE documento_id=? AND rev=?",
+                    (dev, rei, doc_id, rev))
+    con.commit()
+
+
+def conectar(path=None):
+    path = Path(path or DB_PATH)
+    if path.exists():  # base de una versión anterior (sin números de revisión de lista)
+        old = sqlite3.connect(path)
+        cols = [r[1] for r in old.execute("PRAGMA table_info(historial)")]
+        old.close()
+        if cols and "lista_n" not in cols:
+            try:
+                path.replace(path.with_suffix(".db.bak"))
+            except PermissionError:
+                raise SystemExit("Cerrá la versión anterior de la app (está usando documentos.db) y volvé a abrir.")
+    con = sqlite3.connect(path)
+    con.row_factory = sqlite3.Row
+    con.create_function("norm", 1, _norm)
+    con.execute("PRAGMA foreign_keys = ON")
+    con.executescript(SCHEMA)
+    if "nuestro" not in [r[1] for r in con.execute("PRAGMA table_info(documentos)")]:
+        con.execute("ALTER TABLE documentos ADD COLUMN nuestro INTEGER NOT NULL DEFAULT 1")
+        con.commit()
+    if "archivo_excel" not in [r[1] for r in con.execute("PRAGMA table_info(proyectos)")]:
+        con.execute("ALTER TABLE proyectos ADD COLUMN archivo_excel TEXT NOT NULL DEFAULT ''")
+        con.commit()
+    for col in ("fecha_real", "transmittal"):  # KPI de cumplimiento de entrega
+        if col not in [r[1] for r in con.execute("PRAGMA table_info(documentos)")]:
+            con.execute(f"ALTER TABLE documentos ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+            con.commit()
+    con.execute("INSERT OR IGNORE INTO clientes(nombre) SELECT DISTINCT cliente FROM proyectos"
+                " WHERE cliente<>'' UNION SELECT DISTINCT cliente FROM documentos WHERE cliente<>''")
+    con.commit()
+    return con
+
+
+# ---------------------------------------------------------------- reglas de revisión
+def rev_valida(rev):
+    """Válida: vacía, una letra (A, B, C...) o un número (0, 1, 2...)."""
+    return bool(re.fullmatch(r"[A-Za-z]|\d+", rev.strip())) or rev.strip() == ""
+
+
+def siguiente_rev(rev, estado=""):
+    """Secuencia: A → B → C ... ; si está APROBADO pasa a 0; luego 0 → 1 → 2 ..."""
+    rev = rev.strip().upper()
+    if not rev:
+        return "A"
+    if rev.isdigit():
+        return str(int(rev) + 1)
+    e = _norm(estado)
+    if e.startswith("aprobado") and "obs" not in e:
+        return "0"
+    return chr(ord(rev) + 1) if rev < "Z" else rev
+
+
+def partir_estado(estado):
+    """'APC (INF 7)' -> ('APC', '7')"""
+    m = re.fullmatch(r"(.*?)\s*\(\s*INF\.?\s*0*(\d+)\s*\)\s*", estado or "", re.I)
+    return (m.group(1).strip(), m.group(2)) if m else ((estado or "").strip(), "")
+
+
+def juntar_estado(base, informe):
+    base, informe = base.strip(), informe.strip()
+    return f"{base} (INF {informe})" if base and informe else base
+
+
+def clase_estado(estado):
+    """ok / obs / mal / rev / nobs / visto / vacio — para colorear."""
+    e = _norm(estado)
+    if not e:
+        return "vacio"
+    if e.startswith("no se observa"):
+        return "nobs"
+    if e.startswith("visto"):
+        return "visto"
+    if e.startswith("aprobado c"):  # aprobado con observaciones (APROBADO C/OBS): amarillo
+        return "obs"
+    if e.startswith("apc") or e.startswith("aprobado"):  # APC va con Aprobado: verde
+        return "ok"
+    if e.startswith("dpc") or e.startswith("rechaz"):
+        return "mal"
+    return "rev"
+
+
+# ---------------------------------------------------------------- proyectos / listas
+def proyectos(con):
+    return [r[0] for r in con.execute("SELECT nombre FROM proyectos ORDER BY nombre")]
+
+
+def cliente_de(con, proyecto):
+    r = con.execute("SELECT cliente FROM proyectos WHERE nombre=?", (proyecto,)).fetchone()
+    return r[0] if r else ""
+
+
+def asegurar_proyecto(con, proyecto, cliente=""):
+    con.execute("INSERT OR IGNORE INTO proyectos(nombre,cliente,lista_actual) VALUES (?,?,1)",
+                (proyecto, cliente))
+    if cliente:
+        con.execute("UPDATE proyectos SET cliente=? WHERE nombre=? AND cliente=''", (cliente, proyecto))
+        registrar_cliente(con, cliente)
+
+
+def excel_de(con, proyecto):
+    r = con.execute("SELECT archivo_excel FROM proyectos WHERE nombre=?", (proyecto,)).fetchone()
+    return r[0] if r else ""
+
+
+def vincular_excel(con, proyecto, ruta):
+    asegurar_proyecto(con, proyecto)
+    con.execute("UPDATE proyectos SET archivo_excel=? WHERE nombre=?", (str(ruta), proyecto))
+    con.commit()
+
+
+def lista_actual(con, proyecto):
+    r = con.execute("SELECT lista_actual FROM proyectos WHERE nombre=?", (proyecto,)).fetchone()
+    return r[0] if r else 1
+
+
+def clientes(con):
+    """Todos los clientes con los que se trabajó alguna vez."""
+    return [r[0] for r in con.execute("SELECT nombre FROM clientes ORDER BY nombre COLLATE NOCASE")]
+
+
+def registrar_cliente(con, nombre):
+    if nombre.strip():
+        con.execute("INSERT OR IGNORE INTO clientes(nombre) VALUES (?)", (nombre.strip(),))
+        con.commit()
+
+
+def set_cliente_proyecto(con, proyecto, cliente):
+    """Cambia el cliente de un proyecto (y de todos sus documentos)."""
+    asegurar_proyecto(con, proyecto)
+    con.execute("UPDATE proyectos SET cliente=? WHERE nombre=?", (cliente.strip(), proyecto))
+    con.execute("UPDATE documentos SET cliente=? WHERE proyecto=?", (cliente.strip(), proyecto))
+    registrar_cliente(con, cliente)
+    con.commit()
+
+
+def get_config(con, clave, defecto=""):
+    r = con.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
+    return r[0] if r else defecto
+
+
+def set_config(con, clave, valor):
+    con.execute("INSERT OR REPLACE INTO config(clave, valor) VALUES (?,?)", (clave, valor))
+    con.commit()
+
+
+# ---------------------------------------------------------------- usuarios
+def _hash(clave, sal):
+    return hashlib.pbkdf2_hmac("sha256", clave.encode("utf-8"), sal, 200_000).hex()
+
+
+def hay_usuarios(con):
+    return con.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] > 0
+
+
+def usuarios(con):
+    return [(r["nombre"], r["rol"]) for r in con.execute("SELECT nombre, rol FROM usuarios ORDER BY rol, nombre")]
+
+
+def guardar_usuario(con, nombre, rol, clave):
+    sal = os.urandom(16)
+    con.execute("INSERT OR REPLACE INTO usuarios(nombre, rol, sal, clave) VALUES (?,?,?,?)",
+                (nombre, rol, sal.hex(), _hash(clave, sal)))
+    con.commit()
+
+
+def verificar_usuario(con, nombre, clave):
+    """Devuelve el rol ('admin' o 'consulta') si la clave es correcta, si no None."""
+    r = con.execute("SELECT rol, sal, clave FROM usuarios WHERE nombre=?", (nombre,)).fetchone()
+    if r and hmac.compare_digest(_hash(clave, bytes.fromhex(r["sal"])), r["clave"]):
+        return r["rol"]
+    return None
+
+
+USUARIOS_INICIALES = (("Admin", "admin", "admin123"), ("usuario1", "consulta", "usuario234"),
+                      ("Gerencia", "gerencia", "gerencia123"))  # gerencia: solo Dashboard y KPI
+
+
+def asegurar_usuarios_iniciales(con):
+    """Crea los usuarios por defecto si no existen (y quita los de versiones anteriores)."""
+    con.execute("DELETE FROM usuarios WHERE nombre IN ('admin', 'consulta')")
+    for nombre, rol, clave in USUARIOS_INICIALES:
+        if not con.execute("SELECT 1 FROM usuarios WHERE nombre=?", (nombre,)).fetchone():
+            guardar_usuario(con, nombre, rol, clave)
+    con.commit()
+
+
+def hojas_excel(ruta):
+    """Números N de las hojas 'Rev (N)' del Excel (sin abrirlo entero). None si no se puede leer."""
+    import zipfile
+    from html import unescape
+    try:
+        with zipfile.ZipFile(ruta) as z:
+            xml = z.read("xl/workbook.xml").decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001
+        return None
+    nombres = [unescape(n) for n in re.findall(r'<sheet\b[^>]*?\bname="([^"]*)"', xml)]
+    return sorted(int(m.group(1)) for n in nombres if (m := re.fullmatch(r"Rev \((\d+)\)", n.strip())))
+
+
+def retroceder_a_excel(con, proyecto, ultima):
+    """El Excel ya no tiene las hojas posteriores a Rev (ultima): se descartan esas revisiones de la base y
+    se vuelve a trabajar sobre Rev (ultima). Antes se hace una copia de seguridad de la base.
+    Devuelve la ruta de la copia."""
+    archivo = con.execute("PRAGMA database_list").fetchone()["file"]
+    carpeta = Path(archivo).parent / "respaldos"
+    carpeta.mkdir(exist_ok=True)
+    copia = carpeta / f"documentos antes de sincronizar {datetime.now():%Y%m%d-%H%M%S}.db"
+    destino = sqlite3.connect(copia)
+    con.backup(destino)
+    destino.close()
+    con.execute("DELETE FROM historial WHERE lista_n > ? AND documento_id IN"
+                " (SELECT id FROM documentos WHERE proyecto=?)", (ultima, proyecto))
+    con.execute("UPDATE proyectos SET lista_actual=? WHERE nombre=?", (ultima, proyecto))
+    con.commit()
+    return str(copia)
+
+
+def borrar_usuarios(con):
+    con.execute("DELETE FROM usuarios")
+    con.commit()
+
+
+def guardar_lista(con, proyecto, n=None, origen=None):
+    """Deja el estado actual de todos los documentos como Revisión N° (la actual por defecto) en el historial.
+    Se puede repetir: reemplaza lo guardado antes para esa revisión."""
+    n = n or lista_actual(con, proyecto)
+    for d in con.execute("SELECT id FROM documentos WHERE proyecto=?", (proyecto,)).fetchall():
+        con.execute("DELETE FROM historial WHERE documento_id=? AND lista_n=?", (d["id"], n))
+        _snapshot(con, d["id"], origen or f"Revisión N°{n}", lista_n=n, fecha=_hoy())
+    con.commit()
+
+
+def emitir_lista(con, proyecto):
+    """Cierra la Revisión N° actual y abre la N+1 (cuando se entregan archivos nuevos). La N+1 arranca
+    con el estado actual de los documentos."""
+    n = lista_actual(con, proyecto)
+    guardar_lista(con, proyecto, n)
+    con.execute("UPDATE proyectos SET lista_actual=? WHERE nombre=?", (n + 1, proyecto))
+    con.commit()
+    guardar_lista(con, proyecto, n + 1)
+    return n + 1
+
+
+def resumen(con, proyecto):
+    docs = buscar(con, "", proyecto)
+    r = {"total": len(docs), "entregados": 0, "aprobados": 0, "en_revision": 0, "pendientes": 0}
+    for d in docs:
+        r["entregados"] += bool(d["entregado"])
+        c = max((clase_estado(d["estado_cliente"]), clase_estado(d["estado_epen"])),
+                key=["vacio", "nobs", "visto", "rev", "mal", "obs", "ok"].index)
+        if c in ("ok", "obs"):
+            r["aprobados"] += 1
+        elif c in ("rev", "mal"):
+            r["en_revision"] += 1
+        else:
+            r["pendientes"] += 1
+    return r
+
+
+# ---------------------------------------------------------------- consultas
+def _filtro_texto(texto, prefijo=""):
+    sql, params = "", []
+    for palabra in texto.split():
+        sql += (f" AND (norm({prefijo}cod_cliente) LIKE ? OR norm({prefijo}cod_epen) LIKE ?"
+                f" OR norm({prefijo}titulo) LIKE ? OR norm({prefijo}estado_cliente) LIKE ?"
+                f" OR norm({prefijo}estado_epen) LIKE ?)")
+        params += [f"%{_norm(palabra)}%"] * 5
+    return sql, params
+
+
+def buscar(con, texto="", proyecto=""):
+    """Documentos que entregamos nosotros (los que se controlan)."""
+    sql, params = "SELECT * FROM documentos WHERE nuestro=1", []
+    if proyecto:
+        sql += " AND proyecto = ?"
+        params.append(proyecto)
+    s, p = _filtro_texto(texto)
+    return con.execute(sql + s + " ORDER BY id", params + p).fetchall()
+
+
+def buscar_en_lista(con, texto, proyecto, n):
+    """Estado de los documentos tal como estaba en la Revisión N° de la lista."""
+    s, p = _filtro_texto(texto, "d.")
+    sql = ("SELECT d.id, d.proyecto, d.cliente, d.cod_cliente, d.cod_epen, d.titulo, d.responsable,"
+           " d.fecha_limite_go, d.fecha_limite_cliente, h.entregado, h.rev_grupo, h.rev_cliente,"
+           " h.rev_epen, h.estado_cliente, h.estado_epen, h.comentarios, h.fecha AS actualizado"
+           " FROM documentos d JOIN historial h ON h.id = (SELECT MAX(id) FROM historial"
+           " WHERE documento_id=d.id AND lista_n=?) WHERE d.nuestro=1 AND d.proyecto=?")
+    return con.execute(sql + s + " ORDER BY d.id", [n, proyecto] + p).fetchall()
+
+
+def get_doc(con, doc_id):
+    return con.execute("SELECT * FROM documentos WHERE id=?", (doc_id,)).fetchone()
+
+
+def historial(con, doc_id):
+    return con.execute("SELECT * FROM historial WHERE documento_id=? ORDER BY id DESC",
+                       (doc_id,)).fetchall()
+
+
+def buscar_existente(con, proyecto, cod_epen, cod_cliente, titulo):
+    for col, val in (("cod_epen", cod_epen), ("cod_cliente", cod_cliente)):
+        if val:
+            r = con.execute(f"SELECT id FROM documentos WHERE proyecto=? AND {col}=?",
+                            (proyecto, val)).fetchone()
+            if r:
+                return r["id"]
+    if not cod_epen and not cod_cliente and titulo:
+        r = con.execute("SELECT id FROM documentos WHERE proyecto=? AND titulo=?",
+                        (proyecto, titulo)).fetchone()
+        if r:
+            return r["id"]
+    return None
+
+
+# ---------------------------------------------------------------- escritura
+def _snapshot(con, doc_id, origen, lista_n=None, fecha=None):
+    d = get_doc(con, doc_id)
+    con.execute(
+        "INSERT INTO historial(documento_id,lista_n,fecha,origen,entregado,rev_grupo,rev_cliente,"
+        "rev_epen,estado_cliente,estado_epen,comentarios) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (doc_id, lista_n, fecha or _ahora(), origen, d["entregado"], d["rev_grupo"],
+         d["rev_cliente"], d["rev_epen"], d["estado_cliente"], d["estado_epen"], d["comentarios"]))
+
+
+def agregar(con, datos, origen="Alta", lista_n=None, fecha=None):
+    """Agrega un documento. Devuelve (id, creado); si ya existe no lo duplica."""
+    d = {k: (v if k in ("entregado", "nuestro") else _txt(v)) for k, v in datos.items()}
+    asegurar_proyecto(con, d.get("proyecto", ""), d.get("cliente", ""))
+    existente = buscar_existente(con, d.get("proyecto", ""), d.get("cod_epen", ""),
+                                 d.get("cod_cliente", ""), d.get("titulo", ""))
+    if existente:
+        return existente, False
+    cols = list(d)
+    cur = con.execute(
+        f"INSERT INTO documentos({','.join(cols)},actualizado) VALUES ({','.join('?' * len(cols))},?)",
+        [d[c] for c in cols] + [_ahora()])
+    _snapshot(con, cur.lastrowid, origen, lista_n, fecha)
+    con.commit()
+    return cur.lastrowid, True
+
+
+def actualizar(con, doc_id, datos, origen="Edición"):
+    antes = get_doc(con, doc_id)
+    cols = list(datos)
+    con.execute(f"UPDATE documentos SET {','.join(c + '=?' for c in cols)}, actualizado=? WHERE id=?",
+                [datos[c] for c in cols] + [_ahora(), doc_id])
+    if any(c in CAMPOS_ESTADO and antes[c] != datos[c] for c in cols):
+        _snapshot(con, doc_id, origen)
+    con.commit()
+
+
+def eliminar(con, doc_id):
+    con.execute("DELETE FROM documentos WHERE id=?", (doc_id,))
+    con.commit()
+
+
+# ---------------------------------------------------------------- Excel
+def _n_hoja(nombre):
+    m = re.search(r"\((\d+)\)", nombre)
+    return int(m.group(1)) if m else None
+
+
+def _es_rev(nombre):
+    return re.fullmatch(r"\s*Rev\s*\((\d+)\)\s*", nombre or "") is not None
+
+
+def _fecha_txt(v):
+    """Fecha de una celda como dd/mm/aaaa; '' si está vacía o no es una fecha."""
+    f = parse_fecha(v)
+    return f.strftime("%d/%m/%Y") if f else ""
+
+
+def primera_fila_kpi1(k):
+    """Fila donde empiezan los documentos en la hoja «KPI N°1» (la que sigue al encabezado de la tabla):
+    cambia según la versión de la hoja. Por defecto 6."""
+    for r in range(1, 15):
+        if _norm(k.cell(r, 1).value) == "documento cliente":
+            return r + 1
+    return 6
+
+
+def leer_kpi1(con, wb, ws_rev, proyecto, pisar=True):
+    """Fecha real de entrega (col. I) y transmittal (col. M) escritos a mano en la hoja «KPI N°1».
+    La fila r de esa hoja corresponde a la fila r-2 de la hoja Rev más nueva. Con pisar=False solo
+    completa lo que en la base está vacío."""
+    if "KPI N°1" not in wb.sheetnames:
+        return 0
+    k, tocados = wb["KPI N°1"], 0
+    primera = primera_fila_kpi1(k)
+    for r in range(primera, primera + 100):
+        a, b, c = (_txt(ws_rev.cell(r - primera + 4, i).value) for i in (1, 2, 3))  # la fila 4 de Rev va en la primera
+        if not (a or b or c):
+            continue
+        doc = buscar_existente(con, proyecto, b, a, c)
+        if not doc:
+            continue
+        d = get_doc(con, doc)
+        for col, campo, val in (("fecha_real", "fecha_real", _fecha_txt(k.cell(r, 9).value)),
+                                ("transmittal", "transmittal", _txt(k.cell(r, 13).value))):
+            # al importar, el Excel manda (también si la celda está vacía); si no, solo completa huecos
+            if val != d[campo] and (pisar or (val and not d[campo])):
+                con.execute(f"UPDATE documentos SET {col}=? WHERE id=?", (val, doc))
+                tocados += 1
+    con.commit()
+    return tocados
+
+
+def _fecha_hoja(ws):
+    m = re.search(r"\d{2}/\d{2}/\d{4}", _txt(ws["A2"].value))
+    return m.group(0) if m else ""
+
+
+def importar_excel(con, ruta, proyecto, cliente=""):
+    """Importa el Excel de control. Cada hoja 'Rev (N)' es la Revisión N° de la lista; la más
+    nueva es el estado actual. Devuelve (documentos_nuevos, filas_historial, filas_sin_coincidencia)."""
+    wb = cargar_libro(ruta, data_only=True)
+    hojas = sorted((h for h in wb.worksheets if _es_rev(h.title)),
+                   key=lambda h: _n_hoja(h.title), reverse=True)
+    if not hojas:
+        raise ValueError("No encontré hojas con el formato 'Rev (N)'.")
+    asegurar_proyecto(con, proyecto, cliente)
+
+    def filas(ws):
+        for r in ws.iter_rows(min_row=4, values_only=True):
+            r = (list(r) + [None] * 14)[:14]
+            if any(r[:3]):
+                yield r
+
+    def ciclo_de(doc, r):
+        # fechas de devolución / reenvío (columnas M y N) de un documento devuelto con DPC
+        if doc and "dpc" in _norm(r[10]) and _txt(r[8]) and (_txt(r[12]) or _txt(r[13])):
+            guardar_ciclo(con, doc, _txt(r[8]), _txt(r[12]), _txt(r[13]), pisar=False)
+
+    nuevos = hist = sin = 0
+    actual = hojas[0]
+    n_act, f_act = _n_hoja(actual.title), _fecha_hoja(actual)
+    for r in filas(actual):
+        fl_cli = _txt(r[4])
+        entregado = 1 if fl_cli.lower() == "entregado" else 0
+        doc, creado = agregar(con, dict(
+            proyecto=proyecto, cliente=cliente, cod_cliente=_txt(r[0]), cod_epen=_txt(r[1]),
+            titulo=_txt(r[2]), fecha_limite_go=_fecha_txt(r[3]),
+            entregado=entregado, rev_grupo=_txt(r[6]), rev_cliente=_txt(r[7]), rev_epen=_txt(r[8]),
+            estado_cliente=_txt(r[9]), estado_epen=_txt(r[10]), comentarios=_txt(r[11])),
+            origen=f"Excel {actual.title}", lista_n=n_act, fecha=f_act)
+        nuevos += creado
+        if _fecha_txt(r[3]):
+            con.execute("UPDATE documentos SET fecha_limite_go=? WHERE id=?", (_fecha_txt(r[3]), doc))
+        ciclo_de(doc, r)
+    leer_kpi1(con, wb, actual, proyecto)
+
+    for ws in hojas[1:]:
+        n, f = _n_hoja(ws.title), _fecha_hoja(ws)
+        for r in filas(ws):
+            doc = buscar_existente(con, proyecto, _txt(r[1]), _txt(r[0]), _txt(r[2]))
+            if not doc:
+                sin += 1
+                continue
+            ciclo_de(doc, r)
+            con.execute("DELETE FROM historial WHERE documento_id=? AND lista_n=?", (doc, n))
+            con.execute(
+                "INSERT INTO historial(documento_id,lista_n,fecha,origen,entregado,rev_grupo,"
+                "rev_cliente,rev_epen,estado_cliente,estado_epen,comentarios)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (doc, n, f, f"Excel {ws.title}", 1 if _txt(r[4]).lower() == "entregado" else 0,
+                 _txt(r[6]), _txt(r[7]), _txt(r[8]), _txt(r[9]), _txt(r[10]), _txt(r[11])))
+            hist += 1
+    con.execute("UPDATE proyectos SET lista_actual=MAX(lista_actual, ?), archivo_excel=? WHERE nombre=?",
+                (n_act, str(ruta), proyecto))
+    con.commit()
+    return nuevos, hist, sin
+
+
+# (sección nueva, reemplaza a exportar_excel)
+def listar_general(con, proyecto, texto=""):
+    """Todos los documentos de la obra (los nuestros y los que entregan otros)."""
+    s_, p = _filtro_texto(texto)
+    return con.execute("SELECT * FROM documentos WHERE proyecto=?" + s_ + " ORDER BY id",
+                       [proyecto] + p).fetchall()
+
+
+def marcar_nuestros(con, ids_si, ids_no):
+    con.executemany("UPDATE documentos SET nuestro=1 WHERE id=?", [(i,) for i in ids_si])
+    con.executemany("UPDATE documentos SET nuestro=0 WHERE id=?", [(i,) for i in ids_no])
+    con.commit()
+
+
+def leer_tabla(ruta, hoja=None):
+    """Lee un .xlsx/.xlsm/.csv. Devuelve (nombres_de_hojas, hoja_leida, filas)."""
+    ruta = str(ruta)
+    if ruta.lower().endswith((".csv", ".txt")):
+        import csv
+        with open(ruta, encoding="utf-8-sig", errors="replace") as f:
+            txt = f.read()
+        try:
+            dial = csv.Sniffer().sniff(txt[:4096], delimiters=";,\t")
+        except csv.Error:
+            dial = csv.excel
+        return ["CSV"], "CSV", [[c.strip() for c in r] for r in csv.reader(txt.splitlines(), dial)]
+    wb = cargar_libro(ruta, data_only=True)
+    ws = wb[hoja] if hoja in wb.sheetnames else wb.worksheets[0]
+    filas = [[_txt(c) for c in r] for r in ws.iter_rows(values_only=True)]
+    return wb.sheetnames, ws.title, filas
+
+
+def adivinar_columnas(filas):
+    """Busca la fila de encabezados y qué columna es cada dato.
+    Devuelve (indice_primera_fila_de_datos, {'cod_cliente': col, 'cod_epen': col, 'titulo': col})."""
+    mejor = (0, {})
+    for i, r in enumerate(filas[:25]):
+        m, genericas = {}, []
+        for j, c in enumerate(r):
+            n = _norm(c)
+            if not n:
+                continue
+            if any(x in n for x in ("titulo", "descrip", "denominaci", "nombre")):
+                m.setdefault("titulo", j)
+            elif "epen" in n:
+                m.setdefault("cod_epen", j)
+            elif "cliente" in n or "ypf" in n:
+                m.setdefault("cod_cliente", j)
+            elif any(x in n for x in ("cod", "document", "numero", "nro")):
+                genericas.append(j)
+        for j in genericas:  # columnas de código sin nombre claro: solo si falta alguna
+            for k in ("cod_epen", "cod_cliente"):
+                if k not in m:
+                    m[k] = j
+                    break
+        if len(m) > len(mejor[1]):
+            mejor = (i + 1, m)
+    return mejor if mejor[1] else (0, {"cod_cliente": 0, "cod_epen": 1, "titulo": 2})
+
+
+def importar_listado(con, filas, primera, mapa, proyecto, cliente=""):
+    """Carga el listado general de la obra como documentos que todavía NO son nuestros
+    (después se marcan los que entregamos nosotros).
+    mapa: {'cod_cliente': col|None, 'cod_epen': col|None, 'titulo': col|None}.
+    Devuelve (nuevos, repetidos)."""
+    def val(r, k):
+        j = mapa.get(k)
+        return _txt(r[j]) if j is not None and j < len(r) else ""
+    nuevos = repes = 0
+    for r in filas[primera:]:
+        d = {k: val(r, k) for k in ("cod_cliente", "cod_epen", "titulo")}
+        if not any(d.values()):
+            continue
+        _, creado = agregar(con, dict(proyecto=proyecto, cliente=cliente, nuestro=0, entregado=0, **d),
+                            origen="Listado general")
+        nuevos += creado
+        repes += not creado
+    return nuevos, repes
+
+
+# ---------------------------------------------------------------- exportar (mismo formato del Excel original)
+def _fecha_lista(con, proyecto, n):
+    r = con.execute("SELECT h.fecha FROM historial h JOIN documentos d ON d.id=h.documento_id"
+                    " WHERE d.proyecto=? AND h.lista_n=? ORDER BY h.id DESC LIMIT 1", (proyecto, n)).fetchone()
+    m = re.search(r"\d{2}/\d{2}/\d{4}", r[0]) if r else None
+    return m.group(0) if m else _hoy()
+
+
+def _rev_xl(v):
+    return int(v) if v.isdigit() else v
+
+
+def _dt(v):
+    """Texto dd/mm/aaaa -> fecha para escribir en una celda de Excel (None si está vacío)."""
+    f = parse_fecha(v)
+    return datetime(f.year, f.month, f.day) if f else None
+
+
+def _hoja_nueva(wb, nombre, proyecto, cliente, n, filas, fecha, con=None):
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    borde = Side(style="thin", color="999999")
+    ws = wb.create_sheet(nombre)
+    ws.merge_cells("A1:N1")
+    ws.merge_cells("A2:N2")
+    ws["A1"] = proyecto
+    ws["A2"] = f"Revisión N°{n} - Ultima Actualización: {fecha}"
+    for c in ("A1", "A2"):
+        ws[c].font = Font(bold=True, size=14 if c == "A1" else 11)
+        ws[c].alignment = Alignment(horizontal="center")
+    c = (cliente or "EPEN").strip().upper()
+    ws.append(["DOCUMENTO CLIENTE", f"DOCUMENTO {c}",
+               "TITULO DEL DOCUMENTO", "FECHA LIMITE GRUPO OESTE (CRONOGRAMA)", "ESTADO",
+               "RESPONSABLE", "ESTADO GRUPO OESTE", "REVISION EMITIDA AL CLIENTE",
+               f"REVISION EMITIDA A {c}", "ESTADO CLIENTE", f"ESTADO {c}", "COMENTARIOS",
+               "FECHA DEVOLUCIÓN", "FECHA REENVÍO"])
+    for c in ws[3]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="1F4E78")
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for d in filas:
+        dev = rei = None
+        if con is not None and "dpc" in _norm(d["estado_epen"]) and d["rev_epen"]:
+            cy = ciclo(con, d["id"], d["rev_epen"])
+            if cy:
+                dev, rei = _dt(cy["fecha_devolucion"]), _dt(cy["fecha_reenvio"])
+        ws.append([d["cod_cliente"], d["cod_epen"], d["titulo"], _dt(d["fecha_limite_go"]),
+                   "Entregado" if d["entregado"] else "", "",
+                   _rev_xl(d["rev_grupo"]), _rev_xl(d["rev_cliente"]), _rev_xl(d["rev_epen"]),
+                   d["estado_cliente"], d["estado_epen"], d["comentarios"], dev, rei])
+    for row in ws.iter_rows(min_row=3, max_row=ws.max_row):
+        for c in row:
+            c.border = Border(left=borde, right=borde, top=borde, bottom=borde)
+            if c.row > 3:
+                c.alignment = Alignment(vertical="center", wrap_text=True,
+                                        horizontal="center" if c.column > 3 else None)
+    for i, d in enumerate(filas):  # mismo criterio de colores que las hojas que se agregan al Excel vinculado
+        fila = 4 + i
+        if _color_fila(d):
+            for col in range(1, 13):
+                ws.cell(fila, col).fill = PatternFill("solid", fgColor="FF92D050")
+        if clase_estado(d["estado_epen"] or d["estado_cliente"]) == "mal":
+            ws.cell(fila, 11).fill = PatternFill("solid", fgColor="FFFFFF00")
+    for col, w in zip("ABCDEFGHIJKLMN", [36, 30, 70, 20, 16, 16, 12, 14, 14, 18, 28, 30, 16, 16]):
+        ws.column_dimensions[col].width = w
+    for row in ws.iter_rows(min_row=4, max_row=ws.max_row, min_col=4, max_col=4):
+        row[0].number_format = "dd/mm/yyyy"
+    for col in (13, 14):
+        for r in range(4, ws.max_row + 1):
+            ws.cell(r, col).number_format = "dd/mm/yyyy"
+    ws.row_dimensions[3].height = 45
+    ws.freeze_panes = "A4"
+
+
+
+def _color_fila(d):
+    """Criterio de colores del Excel original: fila verde = entregado y aprobado (revisión numérica
+    o estado APROBADO); amarillo (solo en ESTADO EPEN) = DPC / rechazado; sin color = resto."""
+    est = d["estado_epen"] or d["estado_cliente"]
+    if d["entregado"] and (d["rev_grupo"].isdigit() or clase_estado(est) == "ok"):
+        return "FF92D050"
+    return None
+
+
+def _preparar_hoja_rev(ws, cliente):
+    """Deja la hoja con el formato actual: ESTADO (antes «FECHA LIMITE CLIENTE»), fecha límite del cronograma y
+    las columnas FECHA DEVOLUCIÓN / FECHA REENVÍO (M y N) que usa el KPI de respuesta a correcciones."""
+    from copy import copy
+    ws.cell(3, 4).value = "FECHA LIMITE GRUPO OESTE (CRONOGRAMA)"
+    ws.cell(3, 5).value = "ESTADO"
+    for col, titulo in ((13, "FECHA DEVOLUCIÓN"), (14, "FECHA REENVÍO")):
+        c = ws.cell(3, col)
+        if c.value is None:
+            c._style = copy(ws.cell(3, 12)._style)
+            c.value = titulo
+        ws.column_dimensions[c.column_letter].width = max(ws.column_dimensions[c.column_letter].width or 0, 16)
+        for r in range(4, ws.max_row + 1):
+            ws.cell(r, col).number_format = "dd/mm/yyyy"
+    ws.column_dimensions["D"].width = max(ws.column_dimensions["D"].width or 0, 20)
+    for r in range(4, ws.max_row + 1):
+        if ws.cell(r, 4).value is not None and not isinstance(ws.cell(r, 4).value, str):
+            ws.cell(r, 4).number_format = "dd/mm/yyyy"
+
+
+def agregar_hoja_excel(con, ruta, proyecto, n, carpeta_respaldo=None):
+    """Agrega al Excel de control la hoja 'Rev (n)' con el estado actual de los documentos y regenera las hojas
+    «KPI N°1», «KPI N°2» y «Dashboard». Copia el formato de la última hoja 'Rev (N)' del archivo. Antes hace una
+    copia de respaldo. Devuelve la ruta del respaldo."""
+    import shutil
+    from copy import copy
+    from openpyxl.styles import PatternFill
+    import kpi
+
+    ruta = Path(ruta)
+    wb = cargar_libro(ruta, keep_vba=ruta.suffix.lower() == ".xlsm")
+    nombre = f"Rev ({n})"
+    if nombre in wb.sheetnames:
+        raise ValueError(f"El Excel ya tiene una hoja «{nombre}». No la pisé para no perder datos.")
+    carpeta = Path(carpeta_respaldo or ruta.parent / "respaldos")
+    carpeta.mkdir(exist_ok=True)
+    respaldo = carpeta / f"{ruta.stem} - antes de Rev ({n}) {datetime.now():%Y%m%d-%H%M%S}{ruta.suffix}"
+    shutil.copy2(ruta, respaldo)
+    kpi.leer_entradas(wb, con, proyecto)  # lo que se escribió a mano en el Excel completa la base
+    docs = buscar(con, "", proyecto)
+    previas = sorted((h for h in wb.worksheets if _es_rev(h.title)), key=lambda h: _n_hoja(h.title))
+    if not previas:
+        _hoja_nueva(wb, nombre, proyecto, cliente_de(con, proyecto), n, docs, _hoy(), con)
+        kpi.construir(wb, con, proyecto)
+        kpi.activar(wb, nombre)
+        wb.save(ruta)
+        return str(respaldo)
+
+    src = previas[-1]
+    ws = wb.copy_worksheet(src)
+    ws.title = nombre
+    pos_rev = [i for i, h in enumerate(wb.worksheets) if h is not ws and _es_rev(h.title)]
+    # orden «más nueva primero»: la nueva va antes de la última Rev; si no, al final de las Rev
+    destino = pos_rev[0] if wb.worksheets[pos_rev[0]] is src else pos_rev[-1] + 1
+    wb.move_sheet(ws, offset=destino - (len(wb.sheetnames) - 1))
+    ws["A2"] = f"Revisión N°{n} - Ultima Actualización: {_hoy()}"
+    ws["A1"] = proyecto
+    c = (cliente_de(con, proyecto) or "EPEN").strip().upper()  # el nombre del cliente reemplaza a «EPEN»
+    ws.cell(3, 2).value = f"DOCUMENTO {c}"
+    ws.cell(3, 9).value = f"REVISION EMITIDA A {c}"
+    ws.cell(3, 11).value = f"ESTADO {c}"
+    _preparar_hoja_rev(ws, c)
+
+    _escribir_docs(ws, con, docs)
+    kpi.construir(wb, con, proyecto)
+    kpi.activar(wb, nombre)
+    wb.save(ruta)
+    return str(respaldo)
+
+
+def _escribir_docs(ws, con, docs):
+    """Vuelca el estado de los documentos en una hoja Rev (la busca por código; agrega al final los que faltan)."""
+    from copy import copy
+    from openpyxl.styles import PatternFill
+    por_epen = {d["cod_epen"]: d for d in docs if d["cod_epen"]}
+    por_cli = {d["cod_cliente"]: d for d in docs if d["cod_cliente"]}
+    usados, ultima = set(), 3
+    vacio = copy(ws["G4"].fill)
+    verde = PatternFill("solid", fgColor="FF92D050")
+    amarillo = PatternFill("solid", fgColor="FFFFFF00")
+
+    def escribir(fila, d):
+        ws.cell(fila, 5).value = "Entregado" if d["entregado"] else None
+        if parse_fecha(d["fecha_limite_go"]):
+            ws.cell(fila, 4).value = _dt(d["fecha_limite_go"])
+            ws.cell(fila, 4).number_format = "dd/mm/yyyy"
+        for col, k in ((7, "rev_grupo"), (8, "rev_cliente"), (9, "rev_epen")):
+            ws.cell(fila, col).value = _rev_xl(d[k]) if d[k] != "" else None
+        ws.cell(fila, 10).value = d["estado_cliente"] or None
+        ws.cell(fila, 11).value = d["estado_epen"] or None
+        ws.cell(fila, 12).value = d["comentarios"] or None
+        cy = ciclo(con, d["id"], d["rev_epen"]) if "dpc" in _norm(d["estado_epen"]) and d["rev_epen"] else None
+        ws.cell(fila, 13).value = _dt(cy["fecha_devolucion"]) if cy else None
+        ws.cell(fila, 14).value = _dt(cy["fecha_reenvio"]) if cy else None
+        color = _color_fila(d)
+        for col in range(1, 13):  # la fila completa, de DOCUMENTO CLIENTE a COMENTARIOS
+            ws.cell(fila, col).fill = verde if color else copy(vacio)
+        if clase_estado(d["estado_epen"] or d["estado_cliente"]) == "mal":
+            ws.cell(fila, 11).fill = amarillo
+
+    for fila in range(4, ws.max_row + 1):
+        a, b, c = _txt(ws.cell(fila, 1).value), _txt(ws.cell(fila, 2).value), _txt(ws.cell(fila, 3).value)
+        if not (a or b or c):
+            continue
+        ultima = fila
+        d = por_epen.get(b) if b else None
+        d = d or (por_cli.get(a) if a else None)
+        if d:
+            usados.add(d["id"])
+            escribir(fila, d)
+
+    plantilla = ultima
+    for d in docs:  # documentos que no estaban en la hoja anterior
+        if d["id"] in usados:
+            continue
+        ultima += 1
+        for col in range(1, 15):
+            ws.cell(ultima, col)._style = copy(ws.cell(plantilla, col)._style)
+        ws.cell(ultima, 1).value = d["cod_cliente"] or None
+        ws.cell(ultima, 2).value = d["cod_epen"] or None
+        ws.cell(ultima, 3).value = d["titulo"] or None
+        ws.cell(ultima, 4).value = None
+        escribir(ultima, d)
+
+
+def actualizar_hoja_excel(con, ruta, proyecto, n, respaldar=True):
+    """Modifica en el lugar la hoja 'Rev (n)' del Excel vinculado con el estado actual de los documentos y
+    regenera KPI N°1, KPI N°2 y Dashboard. No agrega hojas. Con respaldar=True hace antes una copia.
+    Devuelve la ruta del respaldo ('' si no se hizo)."""
+    import shutil
+    import kpi
+    ruta = Path(ruta)
+    wb = cargar_libro(ruta, keep_vba=ruta.suffix.lower() == ".xlsm")
+    nombre = f"Rev ({n})"
+    if nombre not in wb.sheetnames:
+        raise ValueError(f"El Excel no tiene la hoja «{nombre}».")
+    respaldo = ""
+    if respaldar:
+        carpeta = ruta.parent / "respaldos"
+        carpeta.mkdir(exist_ok=True)
+        respaldo = carpeta / f"{ruta.stem} - antes de modificar Rev ({n}) {datetime.now():%Y%m%d-%H%M%S}{ruta.suffix}"
+        shutil.copy2(ruta, respaldo)
+    kpi.leer_entradas(wb, con, proyecto)
+    ws = wb[nombre]
+    c = (cliente_de(con, proyecto) or "EPEN").strip().upper()
+    ws["A2"] = f"Revisión N°{n} - Ultima Actualización: {_hoy()}"
+    ws.cell(3, 2).value = f"DOCUMENTO {c}"
+    ws.cell(3, 9).value = f"REVISION EMITIDA A {c}"
+    ws.cell(3, 11).value = f"ESTADO {c}"
+    _preparar_hoja_rev(ws, c)
+    _escribir_docs(ws, con, buscar(con, "", proyecto))
+    kpi.construir(wb, con, proyecto)
+    kpi.activar(wb, nombre)
+    wb.save(ruta)
+    return str(respaldo)
+
+
+def actualizar_dashboard_excel(con, ruta, proyecto):
+    """Regenera las hojas «KPI N°1», «KPI N°2» y «Dashboard» del Excel vinculado (van después de las hojas Rev),
+    sin tocar los datos de las hojas Rev salvo las fechas de devolución/reenvío (columnas M y N).
+    Hace una copia de respaldo antes. Devuelve la ruta de la copia."""
+    import shutil
+    import kpi
+    ruta = Path(ruta)
+    wb = cargar_libro(ruta, keep_vba=ruta.suffix.lower() == ".xlsm")
+    carpeta = ruta.parent / "respaldos"
+    carpeta.mkdir(exist_ok=True)
+    respaldo = carpeta / f"{ruta.stem} - antes de los KPI {datetime.now():%Y%m%d-%H%M%S}{ruta.suffix}"
+    shutil.copy2(ruta, respaldo)
+    kpi.leer_entradas(wb, con, proyecto)
+    kpi.construir(wb, con, proyecto)
+    kpi.activar(wb, DASH_NOMBRE)
+    wb.save(ruta)
+    return str(respaldo)
+
+
+DASH_NOMBRE = "Dashboard"
+
+
+def exportar_excel(con, ruta, proyecto):
+    """Una hoja 'Rev (N)' por cada revisión de la lista, con las mismas columnas del Excel original,
+    más las hojas «KPI N°1», «KPI N°2» y «Dashboard»."""
+    from openpyxl import Workbook
+    import kpi
+    cliente = cliente_de(con, proyecto)
+    actual = lista_actual(con, proyecto)
+    wb = Workbook()
+    wb.remove(wb.active)
+    for n in range(actual, 0, -1):
+        filas = buscar(con, "", proyecto) if n == actual else buscar_en_lista(con, "", proyecto, n)
+        if not filas and n != actual:
+            continue
+        _hoja_nueva(wb, f"Rev ({n})", proyecto, cliente, n, filas,
+                    _hoy() if n == actual else _fecha_lista(con, proyecto, n), con)
+    kpi.construir(wb, con, proyecto)
+    kpi.activar(wb, wb.sheetnames[0])
+    wb.save(ruta)
+
+##### FIN DE db.py #####
+
+
+##### ARCHIVO: kpi.py #####
+
+"""KPI del control de documentos.
+
+* KPI N°1 · cumplimiento de entrega: fecha planificada (cronograma) contra fecha real de entrega.
+* KPI N°2 · respuesta a correcciones: días entre que el documento vuelve con DPC (FECHA DEVOLUCIÓN) y se
+  reenvía corregido (FECHA REENVÍO). Cada ciclo es un documento + la revisión devuelta.
+* Dashboard gerencial: tarjetas, estados, plazos y los documentos que requieren atención.
+
+Las hojas de Excel se generan con fórmulas (igual que las del Excel original), así siguen funcionando si se
+cargan fechas a mano. Las funciones kpi1 / kpi2 calculan lo mismo en Python para mostrarlo dentro de la app.
+"""
+import re
+from copy import copy
+from datetime import date, datetime
+
+from openpyxl.chart import BarChart, DoughnutChart, Reference
+from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.series import DataPoint
+from openpyxl.formatting.rule import FormulaRule
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.worksheet.table import Table, TableStyleInfo
+
+import db
+
+KPI1, KPI2, DASH = "KPI N°1", "KPI N°2", "Dashboard"
+FILAS_KPI1 = 100      # documentos que mira el KPI N°1 (filas 4 a 103 de la hoja Rev más nueva)
+FILAS_CICLOS = 40     # ciclos que lista el KPI N°2
+FUENTE_AUX = Font(name="Calibri", size=7, color="FFFFFF")  # celdas auxiliares: letra blanca y chica
+PLAZOS = ["Entregado en término", "Entregado con atraso", "Vencido", "Próximo a vencer",
+          "Pendiente en plazo", "Sin planificación"]
+
+
+# ============================================================ cálculo en Python (para la app y las pruebas)
+def evaluar(d, hoy=None):
+    """Fecha planificada contra fecha real de entrega de un documento (mismas reglas que la hoja KPI N°1)."""
+    hoy = hoy or date.today()
+    plan, real = db.parse_fecha(d["fecha_limite_go"]), db.parse_fecha(d["fecha_real"])
+    desvio = (real - plan).days if plan and real else None
+    cumpl = "Sin datos" if desvio is None else "En término" if desvio <= 0 else "Atrasado"
+    if plan is None:
+        plazo = "Sin planificación"
+    elif real:
+        plazo = "Entregado en término" if real <= plan else "Entregado con atraso"
+    elif plan < hoy:
+        plazo = "Vencido"
+    elif (plan - hoy).days <= 7:
+        plazo = "Próximo a vencer"
+    else:
+        plazo = "Pendiente en plazo"
+    return dict(plan=plan, real=real, desvio=desvio, cumplimiento=cumpl, plazo=plazo)
+
+
+def kpi1(con, proyecto, hoy=None):
+    """Cumplimiento de entrega de cada documento que entregamos. Devuelve (filas, resumen)."""
+    filas = []
+    for d in db.buscar(con, "", proyecto):
+        filas.append(dict(doc=d, transmittal=d["transmittal"], **evaluar(d, hoy)))
+    en_t = sum(f["cumplimiento"] == "En término" for f in filas)
+    atr = sum(f["cumplimiento"] == "Atrasado" for f in filas)
+    desvios = [f["desvio"] for f in filas if f["desvio"] is not None]
+    atraso = [f for f in filas if f["desvio"] is not None and f["desvio"] > 0]
+    peor = max(atraso, key=lambda f: f["desvio"]) if atraso else None
+    res = dict(max_desvio=peor["desvio"] if peor else None,
+               max_doc=f"{peor['doc']['cod_epen']} - {peor['doc']['titulo']}" if peor else "",
+               prom_desvio=(sum(desvios) / len(desvios)) if desvios else None,
+               total=len(filas), entregados=sum(bool(f["doc"]["entregado"]) for f in filas),
+               en_termino=en_t, atrasados=atr, evaluadas=en_t + atr,
+               cumplimiento=(en_t / (en_t + atr)) if en_t + atr else None,
+               vencidos=sum(f["plazo"] == "Vencido" for f in filas),
+               plazos={p: sum(f["plazo"] == p for f in filas) for p in PLAZOS})
+    return filas, res
+
+
+def _siguiente_letra(rev):
+    rev = (rev or "").strip().upper()
+    return chr(ord(rev) + 1) if len(rev) == 1 and "A" <= rev < "Z" else ""
+
+
+def kpi2(con, proyecto, hoy=None, hasta=None):
+    """Ciclos de corrección: documentos que volvieron con DPC. Cada uno cuenta una sola vez (documento + revisión
+    devuelta). Devuelve (ciclos, resumen)."""
+    hoy = hoy or date.today()
+    actual = db.lista_actual(con, proyecto)
+    vistos, ciclos = set(), []
+    for n in range(1, (hasta or actual) + 1):
+        filas = db.buscar(con, "", proyecto) if n == actual else db.buscar_en_lista(con, "", proyecto, n)
+        for d in filas:
+            if not d["cod_epen"] or "dpc" not in db._norm(d["estado_epen"]) or (d["id"], d["rev_epen"]) in vistos:
+                continue
+            vistos.add((d["id"], d["rev_epen"]))
+            cy = db.ciclo(con, d["id"], d["rev_epen"])
+            dev = db.parse_fecha(cy["fecha_devolucion"]) if cy else None
+            rei = db.parse_fecha(cy["fecha_reenvio"]) if cy else None
+            ciclos.append(dict(doc_id=d["id"], cod_epen=d["cod_epen"], cod_cliente=d["cod_cliente"], titulo=d["titulo"],
+                               rev_devuelta=d["rev_epen"], nueva_rev=_siguiente_letra(d["rev_epen"]),
+                               devolucion=dev, reenvio=rei, lista=n,
+                               dias=(rei - dev).days if dev and rei else None,
+                               estado="Cerrado" if rei else "Pendiente",
+                               acum=((rei or hoy) - dev).days if dev else None))
+    por_doc = {}
+    for c in ciclos:
+        por_doc[c["cod_epen"]] = por_doc.get(c["cod_epen"], 0) + (c["acum"] or 0)
+    for c in ciclos:
+        c["acum_doc"] = por_doc[c["cod_epen"]]
+    dias = [c["dias"] for c in ciclos if c["dias"] is not None]
+    con_fecha = [c for c in ciclos if c["acum"] is not None]
+    peor = max(ciclos, key=lambda c: c["acum_doc"]) if con_fecha else None
+    res = dict(promedio=(sum(dias) / len(dias)) if dias else None, ciclos=len(ciclos),
+               cerrados=sum(c["estado"] == "Cerrado" for c in ciclos),
+               pendientes=sum(c["estado"] == "Pendiente" for c in ciclos),
+               mayor_demora=peor["acum_doc"] if peor else None,
+               mayor_doc=f"{peor['cod_epen']} - {peor['titulo']}" if peor else "")
+    return ciclos, res
+
+
+_CACHE_RESUMEN = {}
+
+
+def resumen_excel(ruta):
+    """Máximo desvío, documento y promedio de desvío tal como los calculó Excel en la fila 3 de la hoja «KPI N°1»
+    (valores guardados al cerrar el archivo). None si no se puede leer o la hoja no tiene valores calculados."""
+    import os
+    try:
+        marca = (str(ruta), os.path.getmtime(ruta))
+    except OSError:
+        return None
+    if marca in _CACHE_RESUMEN:
+        return _CACHE_RESUMEN[marca]
+    res = None
+    try:
+        wb = db.cargar_libro(ruta, data_only=True, read_only=True)
+        if KPI1 in wb.sheetnames:
+            ws = wb[KPI1]
+            fila = {}
+            for celdas in ws.iter_rows(min_row=3, max_row=3):
+                for c in celdas:
+                    if c.value is not None:
+                        fila[c.column] = c.value
+            # B3 = máximo desvío, D3 = documento, L3 = promedio (misma disposición que el Excel)
+            mx, doc, prom = fila.get(2), fila.get(4), fila.get(12)
+            if mx is not None or prom is not None:
+                res = dict(max_desvio=mx if isinstance(mx, (int, float)) else None, max_doc=str(doc or ""),
+                           prom_desvio=prom if isinstance(prom, (int, float)) else None)
+        wb.close()
+    except Exception:  # noqa: BLE001
+        res = None
+    _CACHE_RESUMEN[marca] = res
+    return res
+
+
+# ============================================================ lo que se escribe a mano en el Excel -> base
+def _revs(wb):
+    return sorted(((db._n_hoja(h.title), h) for h in wb.worksheets if db._es_rev(h.title)), key=lambda t: t[0])
+
+
+def _codigos(ws, f):
+    return tuple(db._txt(ws.cell(f, i).value) for i in (1, 2, 3))
+
+
+def leer_entradas(wb, con, proyecto):
+    """Trae a la base lo que se cargó a mano en el Excel desde la última vez: fechas de devolución / reenvío
+    (columnas M y N de las hojas Rev) y fecha real / transmittal (hoja KPI N°1). No pisa lo que ya tiene la base."""
+    revs = _revs(wb)
+    for _, ws in revs:
+        for f in range(4, ws.max_row + 1):
+            a, b, c = _codigos(ws, f)
+            rev = db._txt(ws.cell(f, 9).value)
+            if not (a or b or c) or not rev or "dpc" not in db._norm(ws.cell(f, 11).value):
+                continue
+            dev, rei = db._fecha_txt(ws.cell(f, 13).value), db._fecha_txt(ws.cell(f, 14).value)
+            doc = db.buscar_existente(con, proyecto, b, a, c) if (dev or rei) else None
+            if doc:
+                db.guardar_ciclo(con, doc, rev, dev, rei, pisar=False)
+    if revs:
+        db.leer_kpi1(con, wb, revs[-1][1], proyecto, pisar=False)
+
+
+def sincronizar_ciclos(wb, con, proyecto):
+    """Escribe en las columnas M y N de todas las hojas Rev las fechas de devolución / reenvío de cada documento
+    que está en DPC (el KPI N°2 las lee de ahí). Nunca borra lo que ya está escrito."""
+    for _, ws in _revs(wb):
+        for col, titulo in ((13, "FECHA DEVOLUCIÓN"), (14, "FECHA REENVÍO")):
+            c = ws.cell(3, col)
+            if c.value is None:
+                c._style = copy(ws.cell(3, 12)._style)
+                c.value = titulo
+            ws.column_dimensions[c.column_letter].width = max(ws.column_dimensions[c.column_letter].width or 0, 16)
+        for f in range(4, ws.max_row + 1):
+            a, b, c = _codigos(ws, f)
+            rev = db._txt(ws.cell(f, 9).value)
+            if not (a or b or c) or not rev or "dpc" not in db._norm(ws.cell(f, 11).value):
+                continue
+            doc = db.buscar_existente(con, proyecto, b, a, c)
+            cy = db.ciclo(con, doc, rev) if doc else None
+            for col, campo in ((13, "fecha_devolucion"), (14, "fecha_reenvio")):
+                v = db._dt(cy[campo]) if cy else None
+                if v:
+                    cel = ws.cell(f, col)
+                    if not cel.has_style:
+                        cel._style = copy(ws.cell(f, 12)._style)
+                    cel.value, cel.number_format = v, "dd/mm/yyyy"
+
+
+# ============================================================ hojas de Excel
+def _borde(color):
+    s = Side(style="thin", color=color)
+    return Border(left=s, right=s, top=s, bottom=s)
+
+
+def _celda(ws, ref, valor=None, *, tam=9, neg=False, color="1F1F1F", fondo=None, h=None, v="center",
+           ajuste=False, nf=None, borde=None, fuente="Calibri"):
+    c = ws[ref]
+    if valor is not None:
+        c.value = valor
+    c.font = Font(name=fuente, size=tam, bold=neg, color=color)
+    if fondo:
+        c.fill = PatternFill("solid", fgColor=fondo)
+    c.alignment = Alignment(horizontal=h, vertical=v, wrap_text=ajuste)
+    if nf:
+        c.number_format = nf
+    if borde:
+        c.border = _borde(borde)
+    return c
+
+
+def _regla(formula, fondo, texto, neg=False):
+    return FormulaRule(formula=[formula], fill=PatternFill(start_color=fondo, end_color=fondo, fill_type="solid"),
+                       font=Font(color=texto, bold=neg))
+
+
+def _ref(col, f):
+    """Celda de la hoja Rev elegida en B2, con el patrón que usa el Excel original."""
+    r = f'INDIRECT("\'"&$B$2&"\'!{col}{f}")'
+    return f'=IFERROR(IF(COUNTA({r})=0,"",{r}),"")'
+
+
+def _hoja_kpi1(ws, filas_doc, fuente_formula):
+    ws.sheet_properties.tabColor = "1F4E78"
+    ws.sheet_view.showGridLines = False
+    ws.sheet_view.zoomScale = 70
+    ws.merge_cells("A1:M1")
+    for rango in ("A4:M4", "D3:H3", "I3:K3", "L3:M3"):
+        ws.merge_cells(rango)
+    _celda(ws, "A1", "KPI DE CUMPLIMIENTO DE ENTREGA", tam=14, neg=True, color="FFFFFF", fondo="1F4E78",
+           h="center", borde="7F7F7F")
+    for col in "BCDEFGHIJKLM":
+        ws[f"{col}1"].fill = PatternFill("solid", fgColor="1F4E78")
+    rot = {"A": "Revisión fuente", "D": "Total documentos", "F": "Cumplimiento", "H": "Entregas evaluadas",
+           "J": "Vencidos", "L": "Marcados entregados"}
+    val = {"B": fuente_formula,
+           "E": '=COUNTA(INDIRECT("\'"&$B$2&"\'!C4:C103"))',
+           "G": '=IF(COUNTIF(K6:K105,"En término")+COUNTIF(K6:K105,"Atrasado")=0,"Sin datos",'
+                'COUNTIF(K6:K105,"En término")/(COUNTIF(K6:K105,"En término")+COUNTIF(K6:K105,"Atrasado")))',
+           "I": '=COUNTIF(K6:K105,"En término")+COUNTIF(K6:K105,"Atrasado")',
+           "K": '=COUNTIF(L6:L105,"Vencido")', "M": '=COUNTIF(D6:D105,"Entregado")'}
+    for col in "ABCDEFGHIJKLM":
+        _celda(ws, f"{col}2", rot.get(col, val.get(col)), neg=True, h="center", fondo="D9E2F3", borde="A6A6A6",
+               color="1F1F1F" if col in rot and col == "A" else "1F4E78", nf="0.0%" if col == "G" else None)
+    fila3 = {"A": "Máximo desvío:", "B": '=IF(COUNTIF($J$6:$J$105,">0")=0,"Sin atraso",MAX($J$6:$J$105))',
+             "C": "Documento:",
+             "D": '=IF(ISNUMBER($B$3),IFERROR(INDEX($B$6:$B$105,MATCH($B$3,$J$6:$J$105,0))&" - "&'
+                  'INDEX($C$6:$C$105,MATCH($B$3,$J$6:$J$105,0)),"Sin datos"),"Sin atraso")',
+             "I": "Promedio de desvío:", "L": '=IF(COUNT($J$6:$J$105)=0,"Sin datos",AVERAGE($J$6:$J$105))'}
+    for col in "ABCDEFGHIJKLM":
+        _celda(ws, f"{col}3", fila3.get(col), neg=True, color="1F4E78", fondo="D9E2F3", h="left" if col == "D" else "center",
+               borde="A6A6A6", ajuste=col == "D",
+               nf='0" días"' if col == "B" else '0.0" días";-0.0" días";0.0" días"' if col == "L" else None)
+    _celda(ws, "A4", "La hoja detecta automáticamente la última Rev (n). Los datos amarillos (fecha real de entrega y "
+                     "transmittal) se cargan en la app (pestaña Modificar) o a mano acá. La fecha planificada sale de la "
+                     "columna FECHA LIMITE GRUPO OESTE de la hoja Rev.", neg=True, color="7F6000", fondo="FFF2CC",
+           h="left", ajuste=True, borde="D6B656")
+    cab = ["DOCUMENTO CLIENTE", "DOCUMENTO EPEN", "TÍTULO DEL DOCUMENTO", "ENTREGA SEGÚN CONTROL", "REV. CLIENTE",
+           "REV. EPEN", "ESTADO EPEN", "FECHA PLANIFICADA", "FECHA REAL ENTREGA", "DESVÍO DÍAS", "CUMPLIMIENTO",
+           "ESTADO DE PLAZO", "TRANSMITTAL"]
+    for i, t in enumerate(cab):
+        _celda(ws, ws.cell(5, i + 1).coordinate, t, color="FFFFFF", fondo="203864",
+               h="center", ajuste=True, borde="000000")
+    fuente_rev = {"A": "A", "B": "B", "C": "C", "D": "E", "E": "H", "F": "I", "G": "K"}
+    for r in range(6, 6 + FILAS_KPI1):
+        f = r - 2
+        for col, src in fuente_rev.items():
+            _celda(ws, f"{col}{r}", _ref(src, f), h=None if col in "ABC" else "center", borde="A6A6A6")
+        rd = f'INDIRECT("\'"&$B$2&"\'!D{f}")'
+        _celda(ws, f"H{r}", f'=IFERROR(IF(COUNT({rd})=0,"",{rd}),"")', nf="dd/mm/yyyy", fondo="F2F2F2",
+               borde="A6A6A6", h="center")
+        d = filas_doc.get(f)
+        real = db._dt(d["fecha_real"]) if d else None
+        _celda(ws, f"I{r}", real, nf="dd/mm/yyyy", fondo="FFF2CC", borde="A6A6A6", h="center")
+        _celda(ws, f"J{r}", f'=IF(C{r}="","",IF(OR(H{r}="",I{r}=""),"",I{r}-H{r}))', nf="0", borde="A6A6A6", h="center")
+        _celda(ws, f"K{r}", f'=IF(C{r}="","",IF(J{r}="","Sin datos",IF(J{r}<=0,"En término","Atrasado")))',
+               borde="A6A6A6", h="center")
+        _celda(ws, f"L{r}", f'=IF(C{r}="","",IF(COUNT(H{r})=0,"Sin planificación",IF(COUNT(I{r})>0,'
+                            f'IF(I{r}<=H{r},"Entregado en término","Entregado con atraso"),IF(H{r}<TODAY(),"Vencido",'
+                            f'IF(H{r}-TODAY()<=7,"Próximo a vencer","Pendiente en plazo")))))', borde="A6A6A6", h="center")
+        _celda(ws, f"M{r}", (d["transmittal"] or None) if d else None, fondo="FFF2CC", borde="A6A6A6", h="center")
+        ws.row_dimensions[r].height = 24
+    for fila, alto in ((1, 28.05), (2, 25.05), (3, 28.05), (4, 28.05), (5, 40.05)):
+        ws.row_dimensions[fila].height = alto
+    for col, w in zip("ABCDEFGHIJKLM", [35.7, 31, 86.8, 18, 12, 13.8, 27, 19, 17, 12, 16, 22, 20]):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "D6"
+    rg = "$G6"
+    reglas = [  # el color del estado va primero: se ve aunque la fila esté verde por entregada
+        ("G6:G105", f'ISNUMBER(SEARCH("RECHAZADO",{rg}))', "C00000", "FFFFFF"),
+        ("G6:G105", f'ISNUMBER(SEARCH("DPC",{rg}))', "FFC7CE", "9C0006"),
+        ("G6:G105", f'AND(ISNUMBER(SEARCH("APROBADO",{rg})),ISNUMBER(SEARCH("OBS",{rg})))', "FFF2CC", "9C6500"),
+        ("G6:G105", f'OR(ISNUMBER(SEARCH("REVISION",{rg})),ISNUMBER(SEARCH("REVISIÓN",{rg})))', "FFEB9C", "9C6500"),
+        ("G6:G105", f'ISNUMBER(SEARCH("NO SE OBSERVA",{rg}))', "DDEBF7", "1F4E78"),
+        ("G6:G105", f'ISNUMBER(SEARCH("VISTO",{rg}))', "D9E1F2", "44546A"),
+        ("G6:G105", f'ISNUMBER(SEARCH("APC",{rg}))', "C6EFCE", "006100"),
+        ("G6:G105", f'AND(ISNUMBER(SEARCH("APROBADO",{rg})),NOT(ISNUMBER(SEARCH("OBS",{rg}))))', "C6EFCE", "006100"),
+        ("A6:G105", '$D6="Entregado"', "92D050", "1F1F1F"),
+        ("K6:K105", '$K6="En término"', "C6EFCE", "006100"),
+        ("K6:K105", '$K6="Atrasado"', "FFC7CE", "9C0006"),
+        ("L6:L105", '$L6="Vencido"', "FFC7CE", "9C0006"),
+        ("L6:L105", '$L6="Próximo a vencer"', "FFEB9C", "9C6500"),
+        ("L6:L105", '$L6="Entregado en término"', "C6EFCE", "006100"),
+        ("L6:L105", '$L6="Entregado con atraso"', "FCE5CD", "B45F06"),
+    ]
+    for rango, formula, fondo, texto in reglas:
+        ws.conditional_formatting.add(rango, _regla(formula, fondo, texto))
+
+
+def _hoja_kpi2(ws, n_hojas, filas_por_hoja):
+    ws.sheet_properties.tabColor = "7030A0"
+    ws.sheet_view.showGridLines = False
+    total = n_hojas * filas_por_hoja
+    fin = 5 + total              # última fila de la zona de cálculo (K a S)
+    ult = 5 + FILAS_CICLOS       # última fila de la tabla visible
+    ws.merge_cells("A1:G1")
+    ws.merge_cells("D3:G3")
+    ws.merge_cells("A4:G4")
+    _celda(ws, "A1", "KPI DE RESPUESTA A CORRECCIONES", tam=16, neg=True, color="FFFFFF", fondo="1F4E78", h="center",
+           borde="7F7F7F")
+    for col in "BCDEFG":
+        ws[f"{col}1"].fill = PatternFill("solid", fgColor="1F4E78")
+    resumen = {
+        "A2": ("Promedio de días:", None), "B2": (f'=IFERROR(AVERAGE(F6:F{ult}),"Sin datos")', "0.0"),
+        "D2": ("Ciclos reemitidos:", None), "E2": (f'=COUNTIFS(A6:A{ult},"<>",G6:G{ult},"Cerrado")', None),
+        "F2": ("Pendientes:", None), "G2": (f'=COUNTIFS(A6:A{ult},"<>",G6:G{ult},"Pendiente")', None),
+        "A3": ("Mayor demora acumulada:", None),
+        "B3": (f'=IF(COUNT($H$6:$H${ult})=0,"Sin datos",MAX($I$6:$I${ult}))', '0" días"'),
+        "C3": ("Documento:", None),
+        "D3": (f'=IFERROR(INDEX($A$6:$A${ult},MATCH($B$3,$I$6:$I${ult},0))&" - "&'
+               f'INDEX($C$6:$C${ult},MATCH($B$3,$I$6:$I${ult},0)),"Sin datos")', None),
+    }
+    for col in "ABCDEFG":
+        for fila in (2, 3):
+            _celda(ws, f"{col}{fila}", tam=10, neg=True, color="1F4E78", fondo="D9E2F3", h="center", borde="A6A6A6")
+    for ref, (v, nf) in resumen.items():
+        _celda(ws, ref, v, tam=10, neg=True, color="1F4E78", fondo="D9E2F3", h="left" if ref == "D3" else "center",
+               ajuste=True, borde="A6A6A6", nf=nf)
+    _celda(ws, "A4", "Al marcar ESTADO EPEN como DPC, el documento se incorpora automáticamente. Las fechas de devolución "
+                     "y reenvío se cargan en la app (pestaña Modificar) o en las columnas M y N de la hoja Rev. La mayor "
+                     "demora suma todos sus ciclos y cuenta los pendientes hasta hoy.", neg=True, color="7F6000",
+           fondo="FFF2CC", h="left", ajuste=True, borde="D6B656")
+    for col, t in zip("ABCDEFG", ["DOCUMENTO EPEN", "DOCUMENTO CLIENTE", "TÍTULO DEL DOCUMENTO", "REV. DEVUELTA",
+                                  "NUEVA REV.", "DÍAS", "ESTADO"]):
+        _celda(ws, f"{col}5", t, tam=10, neg=True, color="FFFFFF", fondo="203864", h="center", ajuste=True,
+               borde="000000")
+    m = f"$M$6:$M${fin}"
+    for i in range(FILAS_CICLOS):
+        r, k = 6 + i, i + 1
+        idx = lambda col: f"INDEX(${col}$6:${col}${fin},MATCH({k},$S$6:$S${fin},0))"  # noqa: E731
+        f = {
+            "A": f'=IFERROR({idx("M")},"")',
+            "B": f'=IF(A{r}="","",IFERROR({idx("N")},""))',
+            "C": f'=IF(A{r}="","",IFERROR({idx("O")},""))',
+            "D": f'=IF(A{r}="","",IFERROR({idx("P")},""))',
+            "E": f'=IF(D{r}="","",IF(AND(LEN(D{r})=1,CODE(UPPER(D{r}))>=65,CODE(UPPER(D{r}))<90),'
+                 f'CHAR(CODE(UPPER(D{r}))+1),""))',
+            "F": f'=IF(A{r}="","",IF(OR({idx("Q")}="",{idx("R")}=""),"",{idx("R")}-{idx("Q")}))',
+            "G": f'=IF(A{r}="","",IF({idx("R")}="","Pendiente","Cerrado"))',
+            "H": f'=IF(A{r}="","",IFERROR(IF({idx("Q")}="","",IF({idx("R")}="",TODAY()-{idx("Q")},'
+                 f'{idx("R")}-{idx("Q")})),""))',
+            "I": f'=IF(A{r}="","",SUMIF($A$6:$A${ult},A{r},$H$6:$H${ult}))',
+        }
+        for col, formula in f.items():
+            if col in "HI":
+                ws[f"{col}{r}"] = formula
+                ws[f"{col}{r}"].font, ws[f"{col}{r}"].number_format = FUENTE_AUX, "0"
+            else:
+                _celda(ws, f"{col}{r}", formula, tam=10, h=None if col in "ABC" else "center", borde="A6A6A6",
+                       fondo="F2F2F2" if col in "FG" else "EAF2F8", nf="0" if col == "F" else None)
+        ws.row_dimensions[r].height = 24
+    # zona de cálculo: una fila por (hoja Rev, fila de documento)
+    for j in range(total):
+        r = 6 + j
+        hoja, fila = j // filas_por_hoja + 1, 4 + j % filas_por_hoja
+        ws[f"K{r}"], ws[f"L{r}"] = hoja, fila
+        ref = lambda col: f'INDIRECT("\'Rev ("&K{r}&")\'!{col}"&L{r})'  # noqa: E731
+        cel = lambda col: f'=IF(M{r}="","",IFERROR(IF(COUNTA({ref(col)})=0,"",{ref(col)}),""))'  # noqa: E731
+        ws[f"M{r}"] = (f'=IFERROR(IF(ISNUMBER(SEARCH("DPC",{ref("K")})),IF(COUNTA({ref("B")})=0,"",{ref("B")}),""),"")')
+        ws[f"N{r}"], ws[f"O{r}"], ws[f"P{r}"] = cel("A"), cel("C"), cel("I")
+        ws[f"Q{r}"], ws[f"R{r}"] = cel("M"), cel("N")
+        ws[f"S{r}"] = f'=IF(M{r}="","",IF(COUNTIFS($M$6:M{r},M{r},$P$6:P{r},P{r})=1,COUNT($S$5:S{r - 1})+1,""))'
+        for col in "KLMNOPQRS":
+            ws[f"{col}{r}"].font = FUENTE_AUX
+    for fila, alto in ((1, 31.95), (2, 28.05), (3, 28.05), (4, 34.05), (5, 36)):
+        ws.row_dimensions[fila].height = alto
+    for col, w in {"A": 31, "B": 32, "C": 58, "D": 15, "E": 12, "F": 10, "G": 18, "H": 1.4, "I": 1.4}.items():
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "B6"
+    t = Table(displayName="KpiDpcTable", ref=f"A5:G{ult}")
+    t.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=False)
+    ws.add_table(t)
+    ws.conditional_formatting.add(f"G6:G{ult}", _regla('$G6="Cerrado"', "C6EFCE", "006100"))
+    ws.conditional_formatting.add(f"G6:G{ult}", _regla('$G6="Pendiente"', "FCE4D6", "C65911"))
+
+
+def _hoja_dashboard(ws):
+    ws.sheet_properties.tabColor = "2F5597"
+    ws.sheet_view.showGridLines = False
+    ws.merge_cells("A1:F1")
+    ws.merge_cells("A2:C2")
+    ws.merge_cells("D2:F2")
+    _celda(ws, "A1", "DASHBOARD GERENCIAL - CONTROL DE DOCUMENTOS", tam=15, neg=True, color="FFFFFF", fondo="1F4E78",
+           h="center", borde="1F4E78")
+    for col in "BCDEF":
+        ws[f"{col}1"].fill = PatternFill("solid", fgColor="1F4E78")
+    _celda(ws, "A2", f'="Revisión fuente: "&\'{KPI1}\'!B2', neg=True, color="44546A", fondo="D9E2F3", h="left",
+           borde="A6A6A6")
+    _celda(ws, "D2", f'=IFERROR(INDIRECT("\'"&\'{KPI1}\'!B2&"\'!A2"),"")', neg=True, color="44546A", fondo="D9E2F3",
+           h="right", borde="A6A6A6")
+    for col in "BCEF":
+        ws[f"{col}2"].fill = PatternFill("solid", fgColor="D9E2F3")
+    k1, k2 = f"'{KPI1}'", f"'{KPI2}'"
+    cab = ["TOTAL DOCUMENTOS", "AVANCE DE EMISIÓN", "AVANCE DE APROBACIÓN", "CUMPLIMIENTO DE ENTREGAS",
+           "DPC / RECHAZADOS", "RESPUESTA A CORRECCIONES"]
+    val = [f"={k1}!E2", f"=IFERROR({k1}!M2/{k1}!E2,0)", f"=IFERROR(U3/{k1}!E2,0)", f"={k1}!G2", '=IF(U8="",0,U8)',
+           f"={k2}!B2"]
+    pie = ["Base documental", f'={k1}!M2&" emitidos"', '=U3&" aprobados / APC"', f'={k1}!I2&" entregas evaluadas"',
+           '=IF(E5=1,"1 caso activo",E5&" casos activos")', "Días corridos promedio"]
+    fmt = [None, "0.0%", "0.0%", "0.0%", None, "0.0"]
+    for col, c, v, p, nf in zip("ABCDEF", cab, val, pie, fmt):
+        _celda(ws, f"{col}4", c, tam=8, neg=True, color="1F4E78", fondo="D9E2F3", h="center", ajuste=True, borde="A6A6A6")
+        _celda(ws, f"{col}5", v, tam=17, neg=True, color="1F4E78", fondo="FFFFFF", h="center", borde="A6A6A6", nf=nf)
+        _celda(ws, f"{col}6", p, tam=8, color="666666", fondo="F2F2F2", h="center", ajuste=True, borde="A6A6A6")
+    ws.merge_cells("A20:F20")
+    _celda(ws, "A20", "DOCUMENTOS QUE REQUIEREN ATENCIÓN", tam=10, neg=True, color="FFFFFF", fondo="1F4E78", h="left",
+           borde="1F4E78")
+    for col, t in zip("ABCDEF", ["DOCUMENTO EPEN", "TÍTULO DEL DOCUMENTO", "REV. EPEN", "ESTADO EPEN",
+                                 "ESTADO DE PLAZO", "DESVÍO DÍAS"]):
+        _celda(ws, f"{col}21", t, neg=True, color="FFFFFF", fondo="203864", h="center", ajuste=True, borde="A6A6A6")
+    for i in range(12):
+        r = 22 + i
+        for col, src in zip("ABCDEF", "BCFGLJ"):
+            _celda(ws, f"{col}{r}", f'=IFERROR(INDEX({k1}!${src}$6:${src}$105,MATCH({i + 1},$Y$6:$Y$105,0)),"")',
+                   fondo="EAF2F8" if col in "AB" else None, h=None if col in "AB" else "center", borde="D0D0D0")
+        ws.row_dimensions[r].height = 24
+    ws.merge_cells("A34:F34")
+    _celda(ws, "A34", "Prioridad: rechazados, DPC, aprobados con observaciones, vencidos y entregados con atraso. "
+                      "Se muestran los primeros 12 casos.", tam=8, color="666666", h="left")
+    # tablas auxiliares que alimentan los gráficos (letra blanca)
+    aux = {"T2": "Estado", "U2": "Documentos", "T12": "Plazo", "U12": "Documentos"}
+    estados = [("Aprobados / APC", "SUM(Z6:Z105)"), ("No se observa", "SUM(AE6:AE105)"), ("Visto", "SUM(AG6:AG105)"),
+               ("Aprobado con observ.", "SUM(AF6:AF105)"), ("En revisión", "SUM(AA6:AA105)"),
+               ("DPC / Rechazados", "SUM(AB6:AB105)+SUM(AD6:AD105)")]
+    for i, (nombre, suma) in enumerate(estados):
+        r = 3 + i
+        aux[f"T{r}"] = nombre
+        aux[f"U{r}"] = f'=IF({suma}=0,"",{suma})'
+    aux["T9"], aux["U9"] = "Sin estado / otros", f"={k1}!E2-SUM(U3:U8)"
+    plazos = [("En término", f'COUNTIF({k1}!$L$6:$L$105,"Entregado en término")'),
+              ("Con atraso", f'COUNTIF({k1}!$L$6:$L$105,"Entregado con atraso")'),
+              ("Vencidos", f'COUNTIF({k1}!$L$6:$L$105,"Vencido")'),
+              ("Pendientes", f'COUNTIF({k1}!$L$6:$L$105,"Pendiente en plazo")+COUNTIF({k1}!$L$6:$L$105,"Próximo a vencer")'),
+              ("Sin fecha", f'COUNTIF({k1}!$L$6:$L$105,"Sin planificación")')]
+    for i, (nombre, formula) in enumerate(plazos):
+        aux[f"T{13 + i}"], aux[f"U{13 + i}"] = nombre, f"={formula}"
+    for r in range(3, 10):  # para el gráfico: los ceros como #N/D, así no muestran su etiqueta «0%»
+        aux[f"V{r}"] = f"=IF(N(U{r})=0,NA(),U{r})"
+    for r in range(6, 106):
+        g, b, l_ = f"{k1}!G{r}", f"{k1}!C{r}", f"{k1}!L{r}"
+        aux[f"X{r}"] = (f'=IF({b}="","",IF(ISNUMBER(SEARCH("RECHAZADO",{g})),1,IF(ISNUMBER(SEARCH("DPC",{g})),2,'
+                        f'IF(AND(ISNUMBER(SEARCH("APROBADO",{g})),ISNUMBER(SEARCH("OBS",{g}))),3,'
+                        f'IF({l_}="Vencido",4,IF({l_}="Entregado con atraso",5,""))))))')
+        c = lambda k: f"COUNTIF($X$6:$X$105,{k})"  # noqa: E731
+        aux[f"Y{r}"] = (f'=IF(X{r}="","",IF(X{r}=1,COUNTIF($X$6:X{r},1),IF(X{r}=2,{c(1)}+COUNTIF($X$6:X{r},2),'
+                        f'IF(X{r}=3,{c(1)}+{c(2)}+COUNTIF($X$6:X{r},3),IF(X{r}=4,{c(1)}+{c(2)}+{c(3)}+COUNTIF($X$6:X{r},4),'
+                        f'{c(1)}+{c(2)}+{c(3)}+{c(4)}+COUNTIF($X$6:X{r},5))))))')
+        aux[f"Z{r}"] = (f'=IF(OR(ISNUMBER(SEARCH("APC",{g})),AND(ISNUMBER(SEARCH("APROBADO",{g})),'
+                        f'NOT(ISNUMBER(SEARCH("OBS",{g}))))),1,0)')
+        aux[f"AA{r}"] = f'=IF(OR(ISNUMBER(SEARCH("REVISION",{g})),ISNUMBER(SEARCH("REVISIÓN",{g}))),1,0)'
+        aux[f"AB{r}"] = f'=IF(ISNUMBER(SEARCH("DPC",{g})),1,0)'
+        aux[f"AD{r}"] = f'=IF(ISNUMBER(SEARCH("RECHAZADO",{g})),1,0)'
+        aux[f"AE{r}"] = f'=IF(ISNUMBER(SEARCH("NO SE OBSERVA",{g})),1,0)'
+        aux[f"AF{r}"] = (f'=IF(AND(ISNUMBER(SEARCH("APROBADO",{g})),ISNUMBER(SEARCH("OBS",{g}))),1,0)')
+        aux[f"AG{r}"] = f'=IF(ISNUMBER(SEARCH("VISTO",{g})),1,0)'
+    for ref, v in aux.items():
+        ws[ref] = v
+        ws[ref].font = FUENTE_AUX
+    for col, w in {"A": 31, "B": 48, "C": 13, "D": 25, "E": 23, "F": 13}.items():
+        ws.column_dimensions[col].width = w
+    for col in ("T", "U", "V", "W", "X", "Y", "Z", "AA", "AB", "AC", "AD", "AE", "AF", "AG"):
+        ws.column_dimensions[col].width = 1.4
+    for fila, alto in ((1, 30), (2, 19.95), (4, 28.05), (5, 31.95), (6, 22.95), (20, 22.95), (21, 28.05)):
+        ws.row_dimensions[fila].height = alto
+    ws.freeze_panes = "A3"
+    for rango, formula, fondo, texto, neg in (
+            ("D22:D33", 'ISNUMBER(SEARCH("RECHAZADO",$D22))', "C00000", "FFFFFF", False),
+            ("D22:D33", 'ISNUMBER(SEARCH("DPC",$D22))', "FFC7CE", "9C0006", False),
+            ("D22:D33", 'AND(ISNUMBER(SEARCH("APROBADO",$D22)),ISNUMBER(SEARCH("OBS",$D22)))', "FFF2CC", "9C6500", False),
+            ("E22:E33", '$E22="Vencido"', "FFC7CE", "9C0006", False),
+            ("E22:E33", '$E22="Entregado con atraso"', "FCE4D6", "C65911", False)):
+        ws.conditional_formatting.add(rango, _regla(formula, fondo, texto, neg))
+
+    # --- gráficos
+    dona = DoughnutChart()
+    dona.title = "Estado actual de los documentos"
+    dona.title.overlay = False
+    dona.holeSize = 55
+    dona.add_data(Reference(ws, min_col=22, min_row=3, max_row=9))
+    dona.set_categories(Reference(ws, min_col=20, min_row=3, max_row=9))
+    for i, color in enumerate(["1E8E5A", "5B9BD5", "8497B0", "7FA32F", "F2C94C", "D64545", "B8C0CC"]):
+        p = DataPoint(idx=i)
+        p.graphicalProperties.solidFill = color
+        dona.series[0].dPt.append(p)
+    dona.dataLabels = DataLabelList()
+    dona.dataLabels.showPercent = True
+    dona.dataLabels.showVal = dona.dataLabels.showSerName = dona.dataLabels.showCatName = False
+    dona.dataLabels.showLegendKey = False
+    dona.dataLabels.numFmt = "0%;;;"
+    dona.legend.position = "r"
+    dona.width, dona.height = 15.5, 6.6
+    ws.add_chart(dona, "A7")
+    barras = BarChart()
+    barras.type = "col"
+    barras.title = "Cumplimiento del cronograma"
+    barras.title.overlay = False
+    barras.add_data(Reference(ws, min_col=21, min_row=13, max_row=17))
+    barras.set_categories(Reference(ws, min_col=20, min_row=13, max_row=17))
+    serie = barras.series[0]
+    for i, color in enumerate(["1E8E5A", "F4A261", "D64545", "2F6FD6", "B8C0CC"]):
+        p = DataPoint(idx=i)
+        p.graphicalProperties.solidFill = color
+        serie.dPt.append(p)
+    barras.dataLabels = DataLabelList()
+    barras.dataLabels.showVal = True
+    barras.dataLabels.showSerName = barras.dataLabels.showCatName = barras.dataLabels.showLegendKey = False
+    barras.legend = None
+    barras.y_axis.delete = False
+    barras.x_axis.delete = False
+    barras.width, barras.height = 15.5, 6.6
+    ws.add_chart(barras, "C7")
+
+
+def activar(wb, nombre):
+    """Deja una sola hoja seleccionada (si quedan varias «agrupadas», lo que se escribe en una se copia en todas)."""
+    wb.active = wb.sheetnames.index(nombre)
+    for h in wb.worksheets:
+        h.sheet_view.tabSelected = h.title == nombre
+
+
+def construir(wb, con, proyecto):
+    """Regenera «KPI N°1», «KPI N°2» y «Dashboard» (al final del libro, después de las hojas Rev).
+    Devuelve False si el libro no tiene hojas Rev."""
+    revs = _revs(wb)
+    if not revs:
+        return False
+    sincronizar_ciclos(wb, con, proyecto)
+    for nombre in (KPI1, KPI2, DASH):
+        if nombre in wb.sheetnames:
+            del wb[nombre]
+    n_ult, ult = revs[-1]
+    filas_doc = {}
+    for f in range(4, 4 + FILAS_KPI1):
+        a, b, c = _codigos(ult, f)
+        if a or b or c:
+            doc = db.buscar_existente(con, proyecto, b, a, c)
+            if doc:
+                filas_doc[f] = db.get_doc(con, doc)
+    otras = [h for h in wb.worksheets if not db._es_rev(h.title) and h.title not in (KPI1, KPI2, DASH)]
+    fuente = ('="Rev ("&(_xlfn.SHEETS()-3+0*NOW())&")"' if not otras else f'="Rev ({n_ult})"')
+    ws1, ws2, ws3 = wb.create_sheet(KPI1), wb.create_sheet(KPI2), wb.create_sheet(DASH)
+    _hoja_kpi1(ws1, filas_doc, fuente)
+    filas_por_hoja = max(32, max(h.max_row for _, h in revs) - 2)
+    _hoja_kpi2(ws2, max(20, n_ult + 5), filas_por_hoja)
+    _hoja_dashboard(ws3)
+    wb.calculation.fullCalcOnLoad = True
+    return True
+
+##### FIN DE kpi.py #####
+
+
+##### ARCHIVO: informe.py #####
+
+"""Lectura de los «Informes de ingeniería» en PDF: toma la primera tabla (Nº, Rev, Título, Observaciones)
+y la convierte en estados para actualizar el control de documentos."""
+import re
+import unicodedata
+from pathlib import Path
+
+import db
+
+
+def _fitz():
+    try:
+        import pymupdf as fz
+    except ImportError:
+        try:
+            import fitz as fz
+        except ImportError as e:  # pragma: no cover
+            raise RuntimeError("Falta la librería para leer PDF. Instalala con:  pip install pymupdf") from e
+    return fz
+
+
+def clave(codigo):
+    """Código sin espacios ni guiones, para comparar «ETLC -0226 -ET -Cm…» con «ETLC-0226-ET-Cm…»."""
+    return re.sub(r"[\s\-–—_.]", "", codigo or "").upper()
+
+
+def _compacto(t):
+    t = unicodedata.normalize("NFD", (t or "").lower())
+    return re.sub(r"[^a-z0-9]", "", "".join(c for c in t if unicodedata.category(c) != "Mn"))
+
+
+def clasificar_obs(texto):
+    """'Aprobado con observaciones' -> 'APROBADO C/OBS'; 'APC' -> 'APC'; 'Devuelto para corrección' -> 'DPC'; 'Aprobado' -> 'APROBADO'.
+    Devuelve (estado, reconocido)."""
+    c = _compacto(texto)
+    if c.startswith("aprobadocon"):
+        return "APROBADO C/OBS", True
+    if c.startswith("apc"):
+        return "APC", True
+    if c.startswith(("devuelto", "dpc")):
+        return "DPC", True
+    if c.startswith("rechaz"):
+        return "RECHAZADO", True
+    if c.startswith("aprobado"):
+        return "APROBADO", True
+    if c.startswith("enrevision"):
+        return "EN REVISION", True
+    return re.sub(r"\s+", " ", (texto or "").strip()), False
+
+
+def leer_informe(ruta):
+    """Devuelve {'numero': '8', 'fecha': '05/10/2026', 'envio': '15', 'filas': [{'codigo','rev','titulo','obs'}]}."""
+    fz = _fitz()
+    doc = fz.open(str(ruta))
+    texto1 = doc[0].get_text() if len(doc) else ""
+    m = re.search(r"INFORME\s+DE\s+INGENIER[ÍI]A\s+N[º°o\.]*\s*0*(\d+)", texto1, re.I)
+    numero = m.group(1) if m else ""
+    if not numero:
+        m = re.search(r"informe[\s\-_]*0*(\d+)", Path(ruta).stem, re.I)
+        numero = m.group(1) if m else ""
+    fecha = (re.search(r"\d{2}/\d{2}/\d{4}", texto1) or [""])[0] if texto1 else ""
+    envio = (re.search(r"ENVIO\s+N[º°o\.]*\s*(\d+)", texto1, re.I) or [None, ""])[1]
+
+    filas, hubo_encabezado = [], False
+    for pagina in doc:
+        for t in pagina.find_tables().tables:
+            datos = t.extract()
+            if not datos or len(datos[0]) < 3:
+                continue
+            cab = [_compacto(c) for c in datos[0]]
+            if any("rev" == c for c in cab) and any(c.startswith("observ") for c in cab):
+                hubo_encabezado = True
+                i_cod = 0
+                i_rev = next(i for i, c in enumerate(cab) if c == "rev")
+                i_obs = next(i for i, c in enumerate(cab) if c.startswith("observ"))
+                i_tit = next((i for i, c in enumerate(cab) if c.startswith("titulo")), 2)
+                cuerpo = datos[1:]
+            elif hubo_encabezado and len(datos[0]) == 4 and re.fullmatch(r"[A-Za-z0-9]{1,2}", (datos[0][1] or "").strip()):
+                i_cod, i_rev, i_tit, i_obs = 0, 1, 2, 3  # la tabla continúa en otra página
+                cuerpo = datos
+            else:
+                continue
+            for r in cuerpo:
+                r = [(c or "").strip() for c in r]
+                if len(r) <= max(i_cod, i_rev, i_obs) or not clave(r[i_cod]):
+                    continue
+                filas.append({"codigo": re.sub(r"\s+", " ", r[i_cod]), "rev": r[i_rev].upper(),
+                              "titulo": re.sub(r"\s+", " ", r[i_tit]) if i_tit < len(r) else "",
+                              "obs": re.sub(r"\s+", " ", r[i_obs])})
+        if hubo_encabezado and filas:
+            pass  # sigue buscando en las demás páginas solo continuaciones de la misma tabla
+    return {"numero": numero, "fecha": fecha, "envio": envio, "filas": filas}
+
+
+def _inf(estado):
+    n = db.partir_estado(estado)[1]
+    return int(n) if n.isdigit() else 0
+
+
+def ultimo_informe(con, proyecto):
+    """Número del último informe ya aplicado: el mayor «(INF N)» que figura en los estados de los documentos."""
+    return max([_inf(d["estado_epen"]) for d in db.buscar(con, "", proyecto)] +
+               [_inf(d["estado_cliente"]) for d in db.buscar(con, "", proyecto)] + [0])
+
+
+def informe_viejo(con, proyecto, informe):
+    """(es_viejo, ultimo_aplicado): el informe cargado es anterior al último informe ya aplicado."""
+    ult = ultimo_informe(con, proyecto)
+    return (informe["numero"].isdigit() and int(informe["numero"]) < ult), ult
+
+
+def emparejar(con, proyecto, informe, campo="estado_epen"):
+    """Une cada fila del informe con un documento del control (por código EPEN o del cliente).
+    Devuelve una lista de dicts: fila, doc (o None), estado (nuevo), reconocido, aviso, viejo, igual.
+    Si el informe es anterior al último ya aplicado, todas las filas encontradas quedan «viejo» (no se pueden aplicar)."""
+    docs = db.buscar(con, "", proyecto)
+    es_viejo, ult = informe_viejo(con, proyecto, informe)
+    por_clave = {}
+    for d in docs:
+        for k in (d["cod_epen"], d["cod_cliente"]):
+            if clave(k):
+                por_clave.setdefault(clave(k), d)
+    res = []
+    for f in informe["filas"]:
+        d = por_clave.get(clave(f["codigo"]))
+        base, ok = clasificar_obs(f["obs"])
+        nuevo = db.juntar_estado(base, informe["numero"]) if ok else base
+        aviso, viejo, igual = "", False, False
+        if d is None:
+            aviso = "No está en la lista de documentos del control"
+        elif es_viejo:
+            viejo = True
+            sig = max(_inf(d["estado_epen"]), _inf(d["estado_cliente"]))
+            n_inf = int(informe["numero"])
+            donde = (f"el documento ya pasó al informe N°{sig}" if sig > n_inf
+                     else f"el último informe aplicado es el N°{ult}")
+            aviso = f"Informe viejo: {donde} (este es el N°{n_inf})"
+        else:
+            rev_inf = (f["rev"] or "").strip().upper()
+            revs_ok = (not rev_inf) or all(d[k].upper() == rev_inf for k in ("rev_grupo", "rev_cliente", "rev_epen"))
+            if rev_inf and not revs_ok:
+                aviso = f"Revisión: {d['rev_epen'] or d['rev_grupo'] or '—'} → {rev_inf}"
+            if d[campo].strip() == nuevo and revs_ok and d["entregado"]:
+                igual, aviso = True, "Sin cambios: ya tiene este estado y esta revisión"
+        if not ok and not viejo:
+            aviso = (aviso + " · " if aviso else "") + "Observación no reconocida: se guardaría tal cual"
+        res.append({"fila": f, "doc": d, "estado": nuevo, "reconocido": ok, "aviso": aviso, "viejo": viejo, "igual": igual})
+    return res
+
+##### FIN DE informe.py #####
+
+
+##### ARCHIVO: app.py #####
+
+"""Control de documentos: cargar, consultar y actualizar el estado de cada documento.
+Ejecutar:  python app.py
+"""
+import math
+import os
+import sys
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, simpledialog
+from datetime import datetime
+
+import db
+import informe
+import kpi
+
+FUENTE = "Segoe UI"
+AZUL, AZUL_OSC, GRIS_FONDO, GRIS_TXT = "#2563EB", "#1E3A5F", "#F3F5F8", "#5B6678"
+COLORES = {  # clase de estado -> (fondo fila, fondo etiqueta, texto etiqueta)
+    "ok": ("#DDF3E6", "#1E8E5A", "white"),
+    "obs": ("#FFF4C2", "#E0B000", "#3D3000"),
+    "mal": ("#FBDEDE", "#D64545", "white"),
+    "rev": ("#DEEAFB", "#2F6FD6", "white"),
+    "nobs": ("#E6F1FB", "#5B9BD5", "white"),
+    "visto": ("#E8ECF4", "#8497B0", "white"),
+    "vacio": ("", "#CBD2DC", "#44506A"),
+}
+ORDEN_CLASE = ["vacio", "nobs", "visto", "rev", "mal", "obs", "ok"]
+ESTADOS = ["", "EN REVISION", "APROBADO", "APROBADO C/OBS", "APC", "DPC", "RECHAZADO",
+           "NO SE OBSERVA", "VISTO"]
+# colores de la hoja de plazos (KPI de cumplimiento de entrega)
+COLOR_PLAZO = {"Entregado en término": "#DDF3E6", "Entregado con atraso": "#FCE5CD", "Vencido": "#FBDEDE",
+               "Próximo a vencer": "#FFF2CC", "Pendiente en plazo": "", "Sin planificación": "#EEF0F4"}
+REVS = [""] + [chr(c) for c in range(ord("A"), ord("H") + 1)] + [str(i) for i in range(0, 10)]
+
+
+NOMBRE_CLI = "EPEN"  # nombre del cliente del proyecto; reemplaza a «EPEN» en todos los textos
+
+
+def E(texto):
+    return texto.replace("EPEN", NOMBRE_CLI)
+
+
+NUEVO_CLI, NUEVO_PROY = "➕ Nuevo cliente…", "➕ Nuevo proyecto…"
+
+
+def opciones_clientes(con, admin=True):
+    """EPEN siempre disponible + los clientes con los que ya se trabajó (+ «Nuevo cliente» para el admin)."""
+    cl = db.clientes(con)
+    if not any(c.lower() == "epen" for c in cl):
+        cl = ["EPEN"] + cl
+    return cl + ([NUEVO_CLI] if admin else [])
+
+
+def opciones_proyectos(con, admin=True):
+    return db.proyectos(con) + ([NUEVO_PROY] if admin else [])
+
+
+def pedir_nombre(parent, titulo, texto):
+    n = simpledialog.askstring(titulo, texto, parent=parent)
+    return (n or "").strip()
+
+
+def clase_doc(d):
+    return max(db.clase_estado(d["estado_cliente"]), db.clase_estado(d["estado_epen"]),
+               key=ORDEN_CLASE.index)
+
+
+class MapeoDialog(tk.Toplevel):
+    """Muestra el archivo del listado general y deja elegir qué columna es cada dato."""
+    NINGUNA = "— no tiene —"
+
+    def __init__(self, master, ruta):
+        super().__init__(master)
+        self.ruta, self.resultado = ruta, None
+        self.nombres, self.hoja, self.filas = db.leer_tabla(ruta)
+        self.title("Listado general · ¿qué columna es cada dato?")
+        self.geometry("1050x620")
+        self.configure(bg=GRIS_FONDO)
+        self.transient(master)
+        self.grab_set()
+
+        top = ttk.Frame(self)
+        top.pack(fill="x", padx=12, pady=(12, 4))
+        ttk.Label(top, text="Hoja:").pack(side="left")
+        self.v_hoja = tk.StringVar(value=self.hoja)
+        cb = ttk.Combobox(top, textvariable=self.v_hoja, values=self.nombres, state="readonly", width=28)
+        cb.pack(side="left", padx=8)
+        cb.bind("<<ComboboxSelected>>", lambda _: self._cambiar_hoja())
+        ttk.Label(self, style="Hint.TLabel", text=(
+            "Abajo ves el contenido del archivo. Indicá en cuál columna está cada dato "
+            "(ya intenté adivinarlo) y desde qué fila empiezan los documentos.")).pack(anchor="w", padx=12)
+
+        self.cont = ttk.Frame(self)
+        self.cont.pack(fill="both", expand=True, padx=12, pady=8)
+
+        fm = ttk.LabelFrame(self, text="  Columnas  ")
+        fm.pack(fill="x", padx=12, pady=4)
+        self.v_map = {}
+        for i, (k, t) in enumerate([("cod_cliente", "Documento cliente"), ("cod_epen", E("Documento EPEN")),
+                                    ("titulo", "Título")]):
+            fr = ttk.Frame(fm)
+            fr.grid(row=0, column=i, padx=10, pady=8, sticky="w")
+            ttk.Label(fr, text=t, style="Hint.TLabel").pack(anchor="w")
+            self.v_map[k] = ttk.Combobox(fr, state="readonly", width=34)
+            self.v_map[k].pack()
+        fr = ttk.Frame(fm)
+        fr.grid(row=0, column=3, padx=10, sticky="w")
+        ttk.Label(fr, text="Primera fila con datos", style="Hint.TLabel").pack(anchor="w")
+        self.v_ini = tk.IntVar(value=2)
+        ttk.Spinbox(fr, from_=1, to=9999, textvariable=self.v_ini, width=8).pack()
+
+        bt = ttk.Frame(self)
+        bt.pack(fill="x", padx=12, pady=10)
+        ttk.Button(bt, text="Cargar listado", style="Accent.TButton", command=self._aceptar).pack(side="right")
+        ttk.Button(bt, text="Cancelar", command=self.destroy).pack(side="right", padx=8)
+        self._armar_vista()
+        self.wait_window()
+
+    def _armar_vista(self):
+        for w in self.cont.winfo_children():
+            w.destroy()
+        ncols = min(max((len(r) for r in self.filas[:60]), default=1), 14)
+        ids = [f"c{j}" for j in range(ncols)]
+        tv = ttk.Treeview(self.cont, columns=["fila"] + ids, show="headings", height=12)
+        tv.heading("fila", text="Fila")
+        tv.column("fila", width=45, anchor="center")
+        from openpyxl.utils import get_column_letter
+        for j, c in enumerate(ids):
+            tv.heading(c, text=get_column_letter(j + 1))
+            tv.column(c, width=150, anchor="w")
+        for i, r in enumerate(self.filas[:60], 1):
+            tv.insert("", "end", values=[i] + [(r[j] if j < len(r) else "")[:40] for j in range(ncols)])
+        sb = ttk.Scrollbar(self.cont, orient="vertical", command=tv.yview)
+        sx = ttk.Scrollbar(self.cont, orient="horizontal", command=tv.xview)
+        tv.configure(yscrollcommand=sb.set, xscrollcommand=sx.set)
+        sb.pack(side="right", fill="y")
+        sx.pack(side="bottom", fill="x")
+        tv.pack(fill="both", expand=True)
+        primera, mapa = db.adivinar_columnas(self.filas)
+        enc = self.filas[primera - 1] if primera >= 1 and self.filas else []
+        opciones = [self.NINGUNA]
+        for j in range(ncols):
+            nom = enc[j] if j < len(enc) else ""
+            opciones.append(f"Columna {get_column_letter(j + 1)}" + (f":  {nom[:28]}" if nom else ""))
+        for k, cb in self.v_map.items():
+            cb["values"] = opciones
+            j = mapa.get(k)
+            cb.current(j + 1 if j is not None and j < ncols else 0)
+        self.v_ini.set(primera + 1)
+
+    def _cambiar_hoja(self):
+        _, self.hoja, self.filas = db.leer_tabla(self.ruta, self.v_hoja.get())
+        self._armar_vista()
+
+    def _aceptar(self):
+        mapa = {k: (cb.current() - 1 if cb.current() > 0 else None) for k, cb in self.v_map.items()}
+        if all(v is None for v in mapa.values()):
+            messagebox.showwarning("Columnas", "Elegí al menos una columna (código o título).", parent=self)
+            return
+        self.resultado = (self.filas, max(self.v_ini.get() - 1, 0), mapa)
+        self.destroy()
+
+
+class InformeDialog(tk.Toplevel):
+    """Vista previa de lo que cambiaría un informe de ingeniería (PDF) en el control de documentos."""
+
+    def __init__(self, master, con, proyecto, info):
+        super().__init__(master)
+        self.con, self.proyecto, self.info = con, proyecto, info
+        self.aplicado = 0
+        self.title("Informe de ingeniería · vista previa")
+        self.geometry("1260x640")
+        self.configure(bg=GRIS_FONDO)
+        self.transient(master)
+        self.grab_set()
+
+        ttk.Label(self, text=f"Informe de ingeniería N°{info['numero'] or '?'}", style="Big.TLabel").pack(
+            anchor="w", padx=14, pady=(12, 0))
+        ttk.Label(self, style="Hint.TLabel", text=(
+            f"Fecha: {info['fecha'] or '—'}   ·   Envío N°{info['envio'] or '—'}   ·   "
+            f"{len(info['filas'])} documentos en la tabla")).pack(anchor="w", padx=14)
+
+        self.viejo, self.ultimo = informe.informe_viejo(con, proyecto, info)
+        if self.viejo:
+            tk.Label(self, bg="#FDE2E2", fg="#7F1D1D", font=(FUENTE, 10, "bold"), justify="left", anchor="w",
+                     padx=12, pady=8, wraplength=1180,
+                     text=(f"⚠  Este informe (N°{info['numero']}) es VIEJO: los documentos ya pasaron a informes más nuevos "
+                           f"(el último aplicado es el N°{self.ultimo}). Por eso no se puede usar para actualizar "
+                           "nada; las filas quedan en gris y bloqueadas.")).pack(fill="x", padx=14, pady=(8, 0))
+        fr = ttk.Frame(self)
+        fr.pack(fill="x", padx=14, pady=8)
+        ttk.Label(fr, text="Guardar el resultado en:").pack(side="left")
+        self.v_campo = tk.StringVar(value="estado_epen")
+        ttk.Radiobutton(fr, text=f"Estado {NOMBRE_CLI}", value="estado_epen", variable=self.v_campo,
+                        command=self._llenar).pack(side="left", padx=10)
+        ttk.Radiobutton(fr, text="Estado cliente", value="estado_cliente", variable=self.v_campo,
+                        command=self._llenar).pack(side="left")
+        self.lbl = ttk.Label(fr, style="Hint.TLabel")
+        self.lbl.pack(side="right")
+
+        cont = ttk.Frame(self)
+        cont.pack(fill="both", expand=True, padx=14)
+        cols = [("ok", "Aplicar", 60), ("cod", "Documento", 200), ("tit", "Título", 270), ("rev", "Rev. informe", 80),
+                ("act", "Estado actual", 140), ("nuevo", "Estado nuevo", 140), ("aviso", "Aviso", 460)]
+        self.tree = ttk.Treeview(cont, columns=[c[0] for c in cols], show="headings", selectmode="browse")
+        for k, t, w in cols:
+            self.tree.heading(k, text=t)
+            self.tree.column(k, width=w, anchor="center" if k in ("ok", "rev") else "w")
+        sb = ttk.Scrollbar(cont, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.tree.pack(fill="both", expand=True)
+        self.tree.tag_configure("mal", background="#FBDEDE")
+        self.tree.tag_configure("aviso", background="#FFF4CE")
+        self.tree.tag_configure("igual", background="#E8EDF3", foreground="#6B7686")
+        self.tree.bind("<ButtonRelease-1>", self._clic)
+
+        ttk.Label(self, style="Hint.TLabel", justify="left", text=(
+            "«Aprobado con observaciones» se guarda como APROBADO C/OBS, «APC» como APC, «Devuelto para corrección» como DPC y «Aprobado» como "
+            "APROBADO, con el número del informe (ej.: APC (INF 8), APROBADO C/OBS (INF 8)). También se carga la revisión del informe (A, B, 0, 1…) y el documento queda como entregado.\n"
+            "Hacé clic en una fila para marcarla o desmarcarla. Si el informe es anterior al último "
+            "ya aplicado, todo queda en gris con 🔒: un informe viejo nunca pisa un estado más nuevo.")).pack(anchor="w", padx=14, pady=6)
+        bt = ttk.Frame(self)
+        bt.pack(fill="x", padx=14, pady=(0, 12))
+        self.btn = ttk.Button(bt, text="✔  Aplicar al control", style="Accent.TButton", command=self._aplicar)
+        self.btn.pack(side="right")
+        ttk.Button(bt, text="Cancelar", command=self.destroy).pack(side="right", padx=8)
+        self._llenar()
+        self.wait_window()
+
+    def _llenar(self):
+        self.filas = informe.emparejar(self.con, self.proyecto, self.info, self.v_campo.get())
+        self.marca = [r["doc"] is not None and not r["viejo"] and not r["igual"] for r in self.filas]
+        self.tree.delete(*self.tree.get_children())
+        for i, r in enumerate(self.filas):
+            d = r["doc"]
+            tag = ("mal",) if d is None else ("igual",) if (r["igual"] or r["viejo"]) else ("aviso",) if r["aviso"] else ()
+            self.tree.insert("", "end", iid=str(i), tags=tag, values=(
+                "🔒" if r["viejo"] else "=" if r["igual"] else "☑" if self.marca[i] else "☐" if d else "—",
+                (d["cod_epen"] or d["cod_cliente"]) if d else r["fila"]["codigo"].replace(" ", ""),
+                d["titulo"] if d else r["fila"]["titulo"], r["fila"]["rev"],
+                d[self.v_campo.get()] if d else "", r["estado"], r["aviso"]))
+        self._contar()
+
+    def _contar(self):
+        iguales = sum(1 for r in self.filas if r["igual"])
+        viejos = sum(1 for r in self.filas if r["viejo"])
+        nuevos = sum(1 for r in self.filas if r["doc"] is None)
+        self.lbl.config(text=f"{sum(self.marca)} se van a actualizar · {iguales} ya estaban al día · "
+                             f"{nuevos} no encontrados" + (f" · {viejos} bloqueados (informe viejo)" if viejos else ""))
+        self.btn.state(["!disabled"] if any(self.marca) else ["disabled"])
+
+    def _clic(self, ev):
+        if self.tree.identify_region(ev.x, ev.y) != "cell":
+            return
+        iid = self.tree.identify_row(ev.y)
+        if not iid or self.filas[int(iid)]["doc"] is None or self.filas[int(iid)]["igual"] or self.filas[int(iid)]["viejo"]:
+            return
+        i = int(iid)
+        self.marca[i] = not self.marca[i]
+        self.tree.set(iid, "ok", "☑" if self.marca[i] else "☐")
+        self._contar()
+
+    def _aplicar(self):
+        campo = self.v_campo.get()
+        origen = f"Informe {self.info['numero']} (PDF)"
+        for r, on in zip(self.filas, self.marca):
+            if on and r["doc"] is not None and not r["igual"] and not r["viejo"]:
+                datos = {campo: r["estado"], "entregado": 1}  # si está en un informe, se entregó
+                rev = (r["fila"]["rev"] or "").strip().upper()
+                if rev and db.rev_valida(rev):  # la revisión del informe (A, B, 0, 1…) va a las tres columnas
+                    datos.update(rev_grupo=rev, rev_cliente=rev, rev_epen=rev)
+                db.actualizar(self.con, r["doc"]["id"], datos, origen=origen)
+                self.aplicado += 1
+        self.destroy()
+
+
+class SelectorDialog(tk.Toplevel):
+    """Lista de todos los documentos de la obra para marcar cuáles entregamos nosotros."""
+
+    def __init__(self, master, con, proyecto):
+        super().__init__(master)
+        self.con, self.proyecto = con, proyecto
+        self.docs = db.listar_general(con, proyecto)
+        self.marca = {d["id"]: bool(d["nuestro"]) for d in self.docs}
+        self.title("Elegir los documentos que entregamos nosotros")
+        self.geometry("1100x650")
+        self.configure(bg=GRIS_FONDO)
+        self.transient(master)
+        self.grab_set()
+
+        ttk.Label(self, text="Hacé clic en un documento para marcarlo (☑) o desmarcarlo (☐).",
+                  style="Big.TLabel").pack(anchor="w", padx=12, pady=(12, 0))
+        top = ttk.Frame(self)
+        top.pack(fill="x", padx=12, pady=8)
+        ttk.Label(top, text="🔍 Filtrar:").pack(side="left")
+        self.v_q = tk.StringVar()
+        self.v_q.trace_add("write", lambda *_: self._llenar())
+        ttk.Entry(top, textvariable=self.v_q, width=40, font=(FUENTE, 11)).pack(side="left", padx=8)
+        ttk.Button(top, text="Marcar los que se ven", command=lambda: self._todos(True)).pack(side="left", padx=4)
+        ttk.Button(top, text="Desmarcar los que se ven", command=lambda: self._todos(False)).pack(side="left")
+        self.lbl = ttk.Label(top, style="Hint.TLabel")
+        self.lbl.pack(side="right")
+
+        cont = ttk.Frame(self)
+        cont.pack(fill="both", expand=True, padx=12)
+        cols = [("ok", "Entregamos", 90), ("cod_epen", E("Documento EPEN"), 210),
+                ("cod_cliente", "Documento cliente", 250), ("titulo", "Título", 480)]
+        self.tree = ttk.Treeview(cont, columns=[c[0] for c in cols], show="headings", selectmode="browse")
+        for k, t, w in cols:
+            self.tree.heading(k, text=t)
+            self.tree.column(k, width=w, anchor="center" if k == "ok" else "w")
+        sb = ttk.Scrollbar(cont, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.tree.pack(fill="both", expand=True)
+        self.tree.tag_configure("si", background="#DDF3E6")
+        self.tree.bind("<ButtonRelease-1>", self._clic)
+        self.tree.bind("<space>", lambda _: self._alternar(self.tree.focus()))
+
+        bt = ttk.Frame(self)
+        bt.pack(fill="x", padx=12, pady=10)
+        ttk.Button(bt, text="💾  Guardar selección", style="Accent.TButton", command=self._guardar).pack(side="right")
+        ttk.Button(bt, text="Cancelar", command=self.destroy).pack(side="right", padx=8)
+        self._llenar()
+        self.wait_window()
+
+    def _visibles(self):
+        palabras = [db._norm(p) for p in self.v_q.get().split()]
+        for d in self.docs:
+            txt = db._norm(f"{d['cod_epen']} {d['cod_cliente']} {d['titulo']}")
+            if all(p in txt for p in palabras):
+                yield d
+
+    def _llenar(self):
+        self.tree.delete(*self.tree.get_children())
+        for d in self._visibles():
+            self._fila(d)
+        self._contar()
+
+    def _fila(self, d, **_):
+        on = self.marca[d["id"]]
+        self.tree.insert("", "end", iid=str(d["id"]), tags=("si",) if on else (),
+                         values=("☑" if on else "☐", d["cod_epen"], d["cod_cliente"], d["titulo"]))
+
+    def _contar(self):
+        self.lbl.config(text=f"{sum(self.marca.values())} marcados de {len(self.docs)} documentos")
+
+    def _alternar(self, iid):
+        if not iid:
+            return
+        i = int(iid)
+        self.marca[i] = not self.marca[i]
+        on = self.marca[i]
+        self.tree.set(iid, "ok", "☑" if on else "☐")
+        self.tree.item(iid, tags=("si",) if on else ())
+        self._contar()
+
+    def _clic(self, ev):
+        if self.tree.identify_region(ev.x, ev.y) == "cell":
+            self._alternar(self.tree.identify_row(ev.y))
+
+    def _todos(self, valor):
+        for d in self._visibles():
+            self.marca[d["id"]] = valor
+        self._llenar()
+
+    def _guardar(self):
+        db.marcar_nuestros(self.con, [i for i, v in self.marca.items() if v],
+                           [i for i, v in self.marca.items() if not v])
+        self.destroy()
+
+
+def _centrar(win, ancho, alto):
+    win.update_idletasks()
+    x = (win.winfo_screenwidth() - ancho) // 2
+    y = max((win.winfo_screenheight() - alto) // 3, 0)
+    win.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+
+class _Dialogo(tk.Toplevel):
+    """Base de las ventanas de ingreso: modal, centrada y con el mismo estilo."""
+
+    def __init__(self, master, titulo, ancho, alto):
+        super().__init__(master)
+        self.title(titulo)
+        self.configure(bg=GRIS_FONDO)
+        self.resizable(False, False)
+        _centrar(self, ancho, alto)
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.lbl_err = ttk.Label(self, text="", foreground="#B42323", font=(FUENTE, 9, "bold"))
+
+    def esperar(self):
+        self.lift()
+        self.focus_force()
+        self.grab_set()
+        self.wait_window()
+
+
+class SetupDialog(_Dialogo):
+    """Primera vez: se crean las contraseñas de los dos usuarios."""
+
+    def __init__(self, master, con):
+        super().__init__(master, "Configuración inicial", 440, 430)
+        self.con, self.ok = con, False
+        ttk.Label(self, text="Primera vez: creá las contraseñas", style="Big.TLabel").pack(
+            anchor="w", padx=22, pady=(18, 4))
+        ttk.Label(self, style="Hint.TLabel", justify="left", text=(
+            "admin: puede cargar, modificar y crear revisiones nuevas.\n"
+            "consulta: solo puede consultar.")).pack(anchor="w", padx=22)
+        self.v = {}
+        for k, t in (("admin", "Contraseña del administrador (admin)"),
+                     ("admin2", "Repetir contraseña del administrador"),
+                     ("consulta", "Contraseña del usuario de consulta")):
+            ttk.Label(self, text=t, style="Hint.TLabel").pack(anchor="w", padx=22, pady=(10, 0))
+            self.v[k] = tk.StringVar()
+            ttk.Entry(self, textvariable=self.v[k], show="•", width=38).pack(anchor="w", padx=22)
+        self.lbl_err.pack(anchor="w", padx=22, pady=(8, 0))
+        bt = ttk.Frame(self)
+        bt.pack(fill="x", padx=22, pady=10)
+        ttk.Button(bt, text="Crear usuarios", style="Accent.TButton", command=self._crear).pack(side="right")
+        ttk.Button(bt, text="Cancelar", command=self.destroy).pack(side="right", padx=8)
+        self.bind("<Return>", lambda _: self._crear())
+        self.esperar()
+
+    def _crear(self):
+        a, a2, c = (self.v[k].get() for k in ("admin", "admin2", "consulta"))
+        if len(a) < 4 or len(c) < 4:
+            self.lbl_err.config(text="Las contraseñas deben tener al menos 4 caracteres.")
+        elif a != a2:
+            self.lbl_err.config(text="Las contraseñas del administrador no coinciden.")
+        elif a == c:
+            self.lbl_err.config(text="Usá contraseñas distintas para cada usuario.")
+        else:
+            db.guardar_usuario(self.con, "admin", "admin", a)
+            db.guardar_usuario(self.con, "consulta", "consulta", c)
+            self.ok = True
+            self.destroy()
+
+
+class LoginDialog(_Dialogo):
+    def __init__(self, master, con):
+        super().__init__(master, "Control de documentos · Ingresar", 400, 300)
+        self.con, self.rol, self.usuario = con, None, ""
+        ttk.Label(self, text="📁  Control de documentos", style="Big.TLabel").pack(anchor="w", padx=22, pady=(20, 2))
+        ttk.Label(self, text="Ingresá con tu usuario", style="Hint.TLabel").pack(anchor="w", padx=22)
+        ttk.Label(self, text="Usuario", style="Hint.TLabel").pack(anchor="w", padx=22, pady=(14, 0))
+        self.v_user = tk.StringVar(value="Admin")
+        nombres = [u for u, _ in db.usuarios(con)] or ["Admin", "usuario1"]
+        ttk.Combobox(self, textvariable=self.v_user, values=nombres, state="readonly", width=36).pack(
+            anchor="w", padx=22)
+        ttk.Label(self, text="Contraseña", style="Hint.TLabel").pack(anchor="w", padx=22, pady=(10, 0))
+        self.v_clave = tk.StringVar()
+        e = ttk.Entry(self, textvariable=self.v_clave, show="•", width=38)
+        e.pack(anchor="w", padx=22)
+        e.focus_set()
+        self.lbl_err.pack(anchor="w", padx=22, pady=(8, 0))
+        bt = ttk.Frame(self)
+        bt.pack(fill="x", padx=22, pady=10)
+        ttk.Button(bt, text="Ingresar", style="Accent.TButton", command=self._ingresar).pack(side="right")
+        ttk.Button(bt, text="Salir", command=self.destroy).pack(side="right", padx=8)
+        self.bind("<Return>", lambda _: self._ingresar())
+        self.esperar()
+
+    def _ingresar(self):
+        rol = db.verificar_usuario(self.con, self.v_user.get(), self.v_clave.get())
+        if rol:
+            self.rol, self.usuario = rol, self.v_user.get()
+            self.destroy()
+        else:
+            self.lbl_err.config(text="Contraseña incorrecta.")
+            self.v_clave.set("")
+
+
+class ContextoDialog(_Dialogo):
+    """Después de ingresar: elegir (o escribir) el proyecto y el cliente con los que se va a trabajar."""
+
+    def __init__(self, master, con, rol):
+        super().__init__(master, "Proyecto y cliente", 500, 380)
+        self.con, self.rol, self.resultado = con, rol, None
+        admin = rol == "admin"
+        ttk.Label(self, text="¿Con qué proyecto trabajás?", style="Big.TLabel").pack(anchor="w", padx=22, pady=(18, 2))
+        ttk.Label(self, style="Hint.TLabel", justify="left", wraplength=455, text=(
+            "Proyecto: elegí uno de los que ya usaste o «➕ Nuevo proyecto…» (lo escribís vos). "
+            "Cliente: «EPEN» u otro ya usado, o «➕ Nuevo cliente…». "
+            "El nombre del cliente reemplaza a «EPEN» en todas las pantallas y en el Excel."
+            if admin else "Elegí uno de los proyectos ya cargados.")).pack(anchor="w", padx=22)
+        estado = "normal" if admin else "readonly"
+        ttk.Label(self, text="Proyecto", style="Hint.TLabel").pack(anchor="w", padx=22, pady=(12, 0))
+        ult = db.get_config(con, "ultimo_proyecto")
+        self.v_proy = tk.StringVar(value=ult)
+        proys = db.proyectos(con)
+        self.cb_p = ttk.Combobox(self, textvariable=self.v_proy, values=opciones_proyectos(con, admin),
+                                 state=estado, width=48)
+        self.cb_p.pack(anchor="w", padx=22)
+        ttk.Label(self, text="Cliente", style="Hint.TLabel").pack(anchor="w", padx=22, pady=(10, 0))
+        self.v_cli = tk.StringVar(value=db.cliente_de(con, ult) if ult else "")
+        self.cb_c = ttk.Combobox(self, textvariable=self.v_cli, values=opciones_clientes(con, admin), state=estado, width=48)
+        self.cb_c.pack(anchor="w", padx=22)
+        self.cb_p.bind("<<ComboboxSelected>>", lambda _: self._autocompletar())
+        self.cb_p.bind("<FocusOut>", lambda _: self._autocompletar())
+        self.cb_c.bind("<<ComboboxSelected>>", lambda _: self._cliente_elegido())
+        if not admin and not v_hay(proys):
+            self.lbl_err.config(text="Todavía no hay proyectos cargados. Pedile al administrador que los cree.")
+        self.lbl_err.pack(anchor="w", padx=22, pady=(8, 0))
+        bt = ttk.Frame(self)
+        bt.pack(fill="x", padx=22, pady=10)
+        ttk.Button(bt, text="Entrar", style="Accent.TButton", command=self._entrar).pack(side="right")
+        ttk.Button(bt, text="Salir", command=self.destroy).pack(side="right", padx=8)
+        self.bind("<Return>", lambda _: self._entrar())
+        self.esperar()
+
+    def _cliente_elegido(self):
+        if self.v_cli.get() == NUEVO_CLI:
+            n = pedir_nombre(self, "Nuevo cliente", "Nombre del nuevo cliente:")
+            self.v_cli.set(n)
+
+    def _autocompletar(self):
+        p = self.v_proy.get().strip()
+        if p == NUEVO_PROY:
+            if getattr(self, "_pidiendo", False):  # al abrirse el cuadro, el combo pierde el foco y dispara esto de nuevo
+                return
+            self._pidiendo = True
+            try:
+                self.v_proy.set(pedir_nombre(self, "Nuevo proyecto", "Nombre del nuevo proyecto:"))
+            finally:
+                self._pidiendo = False
+            return
+        if p in db.proyectos(self.con):
+            self.v_cli.set(db.cliente_de(self.con, p))
+
+    def _entrar(self):
+        p, c = self.v_proy.get().strip(), self.v_cli.get().strip()
+        if self.rol == "admin":
+            if not p or not c:
+                self.lbl_err.config(text="Completá el proyecto y el cliente.")
+                return
+        elif p not in db.proyectos(self.con):
+            self.lbl_err.config(text="Elegí un proyecto de la lista.")
+            return
+        self.resultado = (p, c)
+        self.destroy()
+
+
+def v_hay(lista):
+    return bool(lista)
+
+
+class UsuariosDialog(_Dialogo):
+    """El administrador puede cambiar las contraseñas de los usuarios."""
+
+    def __init__(self, master, con):
+        super().__init__(master, "Usuarios y contraseñas", 420, 360)
+        self.con = con
+        ttk.Label(self, text="Cambiar contraseña", style="Big.TLabel").pack(anchor="w", padx=22, pady=(18, 4))
+        ttk.Label(self, text="Usuario", style="Hint.TLabel").pack(anchor="w", padx=22, pady=(8, 0))
+        self.v_user = tk.StringVar(value="usuario1")
+        self.roles = dict(db.usuarios(con))
+        ttk.Combobox(self, textvariable=self.v_user, values=list(self.roles), state="readonly", width=36).pack(
+            anchor="w", padx=22)
+        self.v = {}
+        for k, t in (("n1", "Nueva contraseña"), ("n2", "Repetir la nueva contraseña")):
+            ttk.Label(self, text=t, style="Hint.TLabel").pack(anchor="w", padx=22, pady=(10, 0))
+            self.v[k] = tk.StringVar()
+            ttk.Entry(self, textvariable=self.v[k], show="•", width=38).pack(anchor="w", padx=22)
+        self.lbl_err.pack(anchor="w", padx=22, pady=(8, 0))
+        bt = ttk.Frame(self)
+        bt.pack(fill="x", padx=22, pady=10)
+        ttk.Button(bt, text="Guardar", style="Accent.TButton", command=self._guardar).pack(side="right")
+        ttk.Button(bt, text="Cerrar", command=self.destroy).pack(side="right", padx=8)
+        self.esperar()
+
+    def _guardar(self):
+        a, b = self.v["n1"].get(), self.v["n2"].get()
+        if len(a) < 4:
+            self.lbl_err.config(text="Mínimo 4 caracteres.", foreground="#B42323")
+        elif a != b:
+            self.lbl_err.config(text="Las contraseñas no coinciden.", foreground="#B42323")
+        else:
+            u = self.v_user.get()
+            db.guardar_usuario(self.con, u, self.roles[u], a)
+            self.lbl_err.config(text=f"✔ Contraseña de «{u}» actualizada.", foreground="#1E8E5A")
+            self.v["n1"].set("")
+            self.v["n2"].set("")
+
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Control de documentos")
+        self.geometry("1320x830")
+        self.minsize(1100, 700)
+        self.configure(bg=GRIS_FONDO)
+        self.con = db.conectar()
+        self.sel_id = None
+        self.rol, self.usuario, self.ok = "consulta", "", False
+        self.v_proy, self.v_cli, self.v_lista = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        self._estilos()
+        self.withdraw()
+        if not self._ingresar():
+            self.destroy()
+            return
+        self.ok = True
+        self._armar_todo()
+        self.deiconify()
+
+    # ============================================================ ingreso y permisos
+    def _admin(self):
+        if self.rol != "admin":
+            messagebox.showinfo("Sin permiso", "Tu usuario es de solo lectura: solo puede ver la información.")
+            return False
+        return True
+
+    def _ingresar(self):
+        """Primer uso (crear contraseñas) → login → elegir proyecto y cliente."""
+        db.asegurar_usuarios_iniciales(self.con)
+        login = LoginDialog(self, self.con)
+        if login.rol is None:
+            return False
+        self.rol, self.usuario = login.rol, login.usuario
+        ctx = ContextoDialog(self, self.con, self.rol)
+        if not ctx.resultado:
+            return False
+        proy, cli = ctx.resultado
+        if self.rol == "admin":
+            db.asegurar_proyecto(self.con, proy, cli)
+            db.set_cliente_proyecto(self.con, proy, cli)
+        db.set_config(self.con, "ultimo_proyecto", proy)
+        self.v_proy.set(proy)
+        return True
+
+    def cerrar_sesion(self):
+        self.withdraw()
+        if not self._ingresar():
+            self.destroy()
+            return
+        self._armar_todo()
+        self.deiconify()
+
+    def usuarios(self):
+        if self._admin():
+            UsuariosDialog(self, self.con)
+
+    # ============================================================ armado de pantallas
+    def _armar_todo(self, tab=None):
+        """(Re)construye cabecera y pestañas. Se usa al ingresar y cada vez que cambia el cliente,
+        porque el nombre del cliente reemplaza a «EPEN» en todos los textos."""
+        global NOMBRE_CLI
+        for w in self.winfo_children():
+            w.destroy()
+        proy = self.v_proy.get().strip()
+        NOMBRE_CLI = db.cliente_de(self.con, proy) or "EPEN"
+        self.v_cli.set(db.cliente_de(self.con, proy))
+        self._proy_actual = proy
+        self._armar_cabecera()
+        self.nb = ttk.Notebook(self)
+        self.nb.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.tab_carga = ttk.Frame(self.nb)
+        self.tab_cons = ttk.Frame(self.nb)
+        self.tab_mod = ttk.Frame(self.nb)
+        if self.rol == "admin":
+            self.nb.add(self.tab_carga, text="  1 · Cargar documentos  ")
+        if self.rol != "gerencia":
+            self.nb.add(self.tab_cons, text="  2 · Consultar documento  ")
+        if self.rol == "admin":
+            self.nb.add(self.tab_mod, text="  3 · Modificar / Actualizar  ")
+        self.tab_dash = ttk.Frame(self.nb)
+        self.nb.add(self.tab_dash, text="  4 · Dashboard  ")
+        self.tab_kpi = ttk.Frame(self.nb)
+        self.nb.add(self.tab_kpi, text="  5 · KPI  ")
+        self._armar_carga()
+        self._armar_consulta()
+        self._armar_modificar()
+        self._armar_dashboard()
+        self._armar_kpi()
+        self.nb.bind("<<NotebookTabChanged>>", self._cambio_tab)
+        self.cambiar_proyecto(inicial=True)
+        if tab is None:
+            tab = ("dash" if self.rol == "gerencia"
+                   else "cons" if db.buscar(self.con, "", self.v_proy.get().strip()) else "carga")
+        frame = {"carga": self.tab_carga, "cons": self.tab_cons, "mod": self.tab_mod, "dash": self.tab_dash, "kpi": self.tab_kpi}[tab]
+        self.nb.select(frame if str(frame) in self.nb.tabs()
+                       else self.tab_dash if self.rol == "gerencia" else self.tab_cons)
+
+    def _reconstruir(self):
+        sel = self.nb.select()
+        tab = ("mod" if sel == str(self.tab_mod) else "carga" if sel == str(self.tab_carga)
+               else "dash" if sel == str(self.tab_dash) else "kpi" if sel == str(self.tab_kpi) else "cons")
+        self.after_idle(lambda: self._armar_todo(tab))
+
+    # ============================================================ estilo
+    def _estilos(self):
+        s = ttk.Style(self)
+        s.theme_use("clam")
+        s.configure(".", font=(FUENTE, 10), background=GRIS_FONDO)
+        s.configure("TFrame", background=GRIS_FONDO)
+        s.configure("TLabel", background=GRIS_FONDO)
+        s.configure("TLabelframe", background=GRIS_FONDO, bordercolor="#C9D0DB")
+        s.configure("TLabelframe.Label", background=GRIS_FONDO, foreground=AZUL_OSC,
+                    font=(FUENTE, 10, "bold"))
+        s.configure("TNotebook", background=GRIS_FONDO, borderwidth=0)
+        s.configure("TNotebook.Tab", padding=(16, 9), font=(FUENTE, 11, "bold"),
+                    background="#DCE2EA", foreground=GRIS_TXT)
+        s.map("TNotebook.Tab", background=[("selected", "white")], foreground=[("selected", AZUL)])
+        s.configure("Treeview", rowheight=27, font=(FUENTE, 10), fieldbackground="white",
+                    background="white", bordercolor="#C9D0DB")
+        s.configure("Treeview.Heading", font=(FUENTE, 10, "bold"), background="#E4E9F0",
+                    foreground=AZUL_OSC, padding=6)
+        s.map("Treeview", background=[("selected", AZUL)], foreground=[("selected", "white")])
+        s.configure("TButton", padding=(12, 6))
+        s.configure("Accent.TButton", background=AZUL, foreground="white", font=(FUENTE, 10, "bold"),
+                    padding=(16, 8))
+        s.map("Accent.TButton", background=[("active", "#1D4ED8"), ("disabled", "#9DB4E8")])
+        s.configure("Danger.TButton", foreground="#B42323")
+        s.configure("Hint.TLabel", foreground=GRIS_TXT, font=(FUENTE, 9))
+        s.configure("Big.TLabel", font=(FUENTE, 13, "bold"), foreground=AZUL_OSC)
+        s.configure("Head.TLabel", background=AZUL_OSC, foreground="white")
+        s.configure("Head.TFrame", background=AZUL_OSC)
+        s.configure("TEntry", padding=4)
+        s.configure("TCombobox", padding=4)
+
+    def _leyenda(self, parent):
+        """Explica los colores de las filas: salen del estado cargado (el más avanzado entre cliente y {cli})."""
+        fr = ttk.Frame(parent)
+        fr.pack(anchor="w", padx=4, pady=(0, 2))
+        ttk.Label(fr, text="Colores:", style="Hint.TLabel").pack(side="left", padx=(0, 4))
+        for clase, txt in (("ok", "Aprobado / APC"), ("obs", "Aprobado con observaciones"), ("mal", "DPC / rechazado"),
+                           ("rev", "En revisión"), ("nobs", "No se observa"), ("visto", "Visto"),
+                           ("vacio", "Sin estado")):
+            tk.Label(fr, text=f" {txt} ", bg=COLORES[clase][0] or "white", fg="#333", font=(FUENTE, 8),
+                     relief="solid", bd=1).pack(side="left", padx=2)
+
+    def _tags(self, tree):
+        for k, (fila, *_rest) in COLORES.items():
+            if fila:
+                tree.tag_configure(k, background=fila)
+
+    # ============================================================ cabecera
+    def _armar_cabecera(self):
+        admin = self.rol == "admin"
+        h = ttk.Frame(self, style="Head.TFrame")
+        h.pack(fill="x", pady=(0, 10))
+        f1 = ttk.Frame(h, style="Head.TFrame")
+        f1.pack(fill="x", padx=14, pady=(10, 2))
+        ttk.Label(f1, text="📁  Control de documentos", style="Head.TLabel",
+                  font=(FUENTE, 16, "bold")).pack(side="left")
+        ttk.Button(f1, text="Cerrar sesión", command=self.cerrar_sesion).pack(side="right", padx=(12, 0))
+        if admin:
+            ttk.Button(f1, text="👤 Usuarios", command=self.usuarios).pack(side="right", padx=(12, 0))
+        ttk.Label(f1, text=f"Sesión: {self.usuario}", style="Head.TLabel").pack(side="right", padx=(12, 0))
+        modo = "normal" if admin else "readonly"
+        self.cb_cli = ttk.Combobox(f1, textvariable=self.v_cli, width=16, state=modo)
+        self.cb_cli.pack(side="right")
+        ttk.Label(f1, text="Cliente:", style="Head.TLabel").pack(side="right", padx=(14, 6))
+        self.cb_proy = ttk.Combobox(f1, textvariable=self.v_proy, width=26, state=modo)
+        self.cb_proy.pack(side="right")
+        ttk.Label(f1, text="Proyecto:", style="Head.TLabel").pack(side="right", padx=(14, 6))
+        self.cb_proy.bind("<<ComboboxSelected>>", lambda _: self.cambiar_proyecto())
+        self.cb_cli.bind("<<ComboboxSelected>>", lambda _: self.cambiar_cliente())
+        if admin:
+            self.cb_proy.bind("<Return>", lambda _: self.cambiar_proyecto())
+            self.cb_cli.bind("<Return>", lambda _: self.cambiar_cliente())
+
+        f2 = ttk.Frame(h, style="Head.TFrame")
+        f2.pack(fill="x", padx=14, pady=(4, 10))
+        ttk.Label(f2, text="Revisión de la lista:", style="Head.TLabel").pack(side="left")
+        self.cb_lista = ttk.Combobox(f2, textvariable=self.v_lista, state="readonly", width=16)
+        self.cb_lista.pack(side="left", padx=8)
+        self.cb_lista.bind("<<ComboboxSelected>>", lambda _: self.refrescar())
+        self.btn_emitir = ttk.Button(f2, text="Nueva revisión", command=self.emitir)
+        if admin:
+            self.btn_emitir.pack(side="left", padx=6)
+            ttk.Button(f2, text="🔄 Sincronizar con Excel",
+                       command=lambda: self._sincronizar_excel(manual=True)).pack(side="left", padx=6)
+        self.lbl_resumen = ttk.Label(f2, text="", style="Head.TLabel", font=(FUENTE, 10, "bold"))
+        self.lbl_resumen.pack(side="right")
+
+    def n_actual(self):
+        return db.lista_actual(self.con, self.v_proy.get().strip())
+
+    def n_visto(self):
+        try:
+            return int(self.v_lista.get().split("N°")[1].split()[0])
+        except (IndexError, ValueError):
+            return self.n_actual()
+
+    def es_actual(self):
+        return self.n_visto() == self.n_actual()
+
+    def cambiar_proyecto(self, inicial=False):
+        """Cambia de proyecto (el administrador puede escribir uno nuevo; se crea al apretar Enter)."""
+        proy = self.v_proy.get().strip()
+        if proy == NUEVO_PROY:
+            proy = pedir_nombre(self, "Nuevo proyecto", "Nombre del nuevo proyecto:")
+            self.v_proy.set(proy or self._proy_actual)
+            proy = self.v_proy.get().strip()
+            if not proy or proy == self._proy_actual:
+                return
+        todos = db.proyectos(self.con)
+        if not inicial:
+            if not proy:
+                self.v_proy.set(self._proy_actual)
+                return
+            if proy not in todos:
+                if self.rol != "admin":
+                    self.v_proy.set(self._proy_actual)
+                    return
+                db.asegurar_proyecto(self.con, proy, self.v_cli.get().strip())
+                todos = db.proyectos(self.con)
+            if proy != self._proy_actual:
+                db.set_config(self.con, "ultimo_proyecto", proy)
+                if (db.cliente_de(self.con, proy) or "EPEN") != NOMBRE_CLI or self.v_cli.get() != db.cliente_de(self.con, proy):
+                    self._reconstruir()  # otro cliente: se renombran los textos
+                    return
+        self._proy_actual = proy
+        adm = self.rol == "admin"
+        if adm:
+            self.after(150, self._sincronizar_excel)
+        self.cb_proy["values"] = opciones_proyectos(self.con, adm)
+        self.cb_cli["values"] = opciones_clientes(self.con, adm)
+        self.v_cli.set(db.cliente_de(self.con, proy))
+        self._cargar_listas()
+        self.refrescar()
+
+    def cambiar_cliente(self):
+        """Cambia el cliente del proyecto: el nuevo nombre reemplaza a «EPEN» en todos lados."""
+        proy, cli = self.v_proy.get().strip(), self.v_cli.get().strip()
+        actual = db.cliente_de(self.con, proy)
+        if cli == NUEVO_CLI:
+            cli = pedir_nombre(self, "Nuevo cliente", "Nombre del nuevo cliente:")
+            self.v_cli.set(cli or actual)
+        if self.rol != "admin" or not proy or cli == actual:
+            self.v_cli.set(actual)
+            return
+        if not cli:
+            self.v_cli.set(actual)
+            return
+        if actual and not messagebox.askyesno(
+                "Cambiar cliente", f"Vas a cambiar el cliente del proyecto «{proy}» de «{actual}» a «{cli}».\n"
+                                   f"El nombre «{cli}» va a reemplazar a «{actual}» en todas las pantallas y "
+                                   "en el Excel que se genere.\n\n¿Continuar?"):
+            self.v_cli.set(actual)
+            return
+        db.set_cliente_proyecto(self.con, proy, cli)
+        self._reconstruir()
+
+    def _cargar_listas(self):
+        n = self.n_actual()
+        self.cb_lista["values"] = [f"N°{n} (actual)"] + [f"N°{i}" for i in range(n - 1, 0, -1)]
+        self.v_lista.set(f"N°{n} (actual)")
+        self.btn_emitir.config(text=f"Nueva revisión N°{n + 1} (se entregaron archivos)")
+
+    def _sincronizar_excel(self, manual=False):
+        """Compara con el Excel vinculado: si se borraron hojas Rev (N) del final, la app vuelve a esa revisión."""
+        if self.rol != "admin":
+            return False
+        proy = self.v_proy.get().strip()
+        ruta = db.excel_de(self.con, proy)
+        if not proy or not ruta or not os.path.exists(ruta):
+            if manual:
+                messagebox.showinfo("Sincronizar", "No hay un Excel vinculado (o no lo encuentro).")
+            return False
+        hojas = db.hojas_excel(ruta)
+        if hojas is None:
+            if manual:
+                messagebox.showwarning("Sincronizar", "No pude leer el Excel vinculado.")
+            return False
+        actual = self.n_actual()
+        if not hojas or hojas[-1] >= actual:
+            if manual:
+                messagebox.showinfo("Sincronizar", "La app y el Excel están al día: coinciden las revisiones.")
+            return False
+        ultima = hojas[-1]
+        if not messagebox.askyesno(
+                "El Excel cambió",
+                f"La app está en la revisión N°{actual}, pero la última hoja del Excel vinculado es Rev ({ultima}).\n\n"
+                f"¿Volver a la revisión N°{ultima}? Se descartan las revisiones posteriores de la app (los documentos "
+                "conservan su estado actual) y antes se hace una copia de seguridad de la base."):
+            return False
+        copia = db.retroceder_a_excel(self.con, proy, ultima)
+        self._cargar_listas()
+        self.refrescar()
+        messagebox.showinfo("Sincronizado", f"Ahora trabajás sobre la revisión N°{ultima}.\n\nCopia de seguridad:\n{copia}")
+        return True
+
+    def guardar_en_excel(self):
+        """Pasa el estado actual de los documentos a la última revisión del Excel vinculado (modifica la hoja
+        Rev (N) en el lugar, sin agregar hojas) y la deja registrada en el historial. Devuelve un texto de estado."""
+        proy = self.v_proy.get().strip()
+        n = self.n_actual()
+        db.guardar_lista(self.con, proy, n)
+        ruta = db.excel_de(self.con, proy)
+        if not ruta or not os.path.exists(ruta):
+            return ""
+        primera = ruta not in getattr(self, "_respaldados", set())  # una sola copia de respaldo por sesión
+        try:
+            db.actualizar_hoja_excel(self.con, ruta, proy, n, respaldar=primera)
+        except PermissionError:
+            messagebox.showwarning("Excel abierto", "Guardé los cambios en la app, pero no pude modificar el Excel porque "
+                                                    "está abierto.\nCerralo y volvé a guardar: se actualiza todo de una vez.")
+            return "⚠ guardado en la app; Excel sin actualizar"
+        except Exception as e:  # noqa: BLE001
+            messagebox.showwarning("Excel", f"Guardé los cambios en la app, pero no pude actualizar el Excel:\n{e}")
+            return "⚠ guardado en la app; Excel sin actualizar"
+        self._respaldados = getattr(self, "_respaldados", set()) | {ruta}
+        return f"· Excel Rev ({n}) actualizado"
+
+    def emitir(self):
+        """Abre una revisión nueva (cuando se entregan archivos): agrega la hoja Rev (N+1) al Excel vinculado."""
+        if not self._admin():
+            return
+        self._sincronizar_excel()
+        proy = self.v_proy.get().strip()
+        n = self.n_actual()
+        if not db.buscar(self.con, "", proy):
+            messagebox.showinfo("Nueva revisión", "Todavía no hay documentos en este proyecto.")
+            return
+        ruta = db.excel_de(self.con, proy)
+        if ruta and not os.path.exists(ruta):
+            messagebox.showwarning("Excel no encontrado", f"No encuentro el Excel vinculado:\n{ruta}\n"
+                                                          "Después te pido que elijas otro.")
+            ruta = ""
+        msg = (f"Se cierra la Revisión N°{n} y se abre la N°{n + 1}, que arranca con el estado actual de los documentos.\n"
+               "Usá esto solo cuando se entregan archivos nuevos: mientras tanto, los cambios se guardan en la "
+               f"revisión N°{n}.\n\n")
+        if ruta:
+            msg += (f"Se agrega la hoja «Rev ({n + 1})» al Excel de control:\n{ruta}\n"
+                    "(hago una copia de respaldo antes; el Excel tiene que estar cerrado)\n\n")
+        if not messagebox.askyesno("Nueva revisión", msg + "¿Continuar?"):
+            return
+        if ruta:
+            try:
+                db.actualizar_hoja_excel(self.con, ruta, proy, n, respaldar=False)  # deja Rev (N) al día
+                respaldo = db.agregar_hoja_excel(self.con, ruta, proy, n + 1)
+            except PermissionError:
+                messagebox.showerror("No se pudo modificar el Excel",
+                                     "No pude escribir en el Excel: probablemente está abierto.\n"
+                                     "Cerralo y volvé a intentar. La revisión NO se creó.")
+                return
+            except Exception as e:  # noqa: BLE001
+                messagebox.showerror("No se pudo modificar el Excel", f"{e}\n\nLa revisión NO se creó.")
+                return
+            aviso = f"\n\nSe agregó la hoja «Rev ({n + 1})» al Excel.\nCopia de respaldo:\n{respaldo}"
+        else:
+            aviso = ""
+        db.emitir_lista(self.con, proy)
+        self._cargar_listas()
+        self.refrescar()
+        messagebox.showinfo("Nueva revisión", f"Ahora trabajás sobre la Revisión N°{n + 1}.{aviso}")
+
+    # ============================================================ datos compartidos
+    def filas(self, texto):
+        proy = self.v_proy.get().strip()
+        if self.es_actual():
+            return db.buscar(self.con, texto, proy)
+        return db.buscar_en_lista(self.con, texto, proy, self.n_visto())
+
+    def refrescar(self, mantener=None):
+        proy = self.v_proy.get().strip()
+        r = db.resumen(self.con, proy)
+        self.lbl_resumen.config(
+            text=f"{r['total']} documentos   ·   {r['entregados']} entregados   ·   "
+                 f"{r['aprobados']} aprobados   ·   {r['en_revision']} en revisión   ·   "
+                 f"{r['pendientes']} sin estado")
+        tot = len(db.listar_general(self.con, proy))
+        self.lbl_listado.config(text=f"Listado general de «{proy}»: {tot} documentos · {r['total']} los entregamos nosotros")
+        self.lbl_excel.config(text="Excel vinculado: " + (db.excel_de(self.con, proy) or
+                                                           "(ninguno todavía: importá o vinculá tu Excel de control)"))
+        self._llenar_consulta()
+        self._llenar_lista_mod()
+        self._llenar_dashboard()
+        self._llenar_kpi()
+        if mantener:
+            self.seleccionar(mantener)
+        elif self.sel_id and self.tree.exists(str(self.sel_id)):
+            self.tree.selection_set(str(self.sel_id))
+
+    def seleccionar(self, doc_id):
+        self.sel_id = doc_id
+        for t in (self.tree, self.tree_m):
+            if t.exists(str(doc_id)):
+                t.selection_set(str(doc_id))
+                t.see(str(doc_id))
+
+    # ============================================================ pestaña 1: cargar
+    def _armar_carga(self):
+        f = self.tab_carga
+        ttk.Label(f, text="Antes de cargar, elegí arriba el Proyecto y el Cliente.",
+                  style="Hint.TLabel").pack(anchor="w", padx=12, pady=(10, 2))
+
+        a = ttk.LabelFrame(f, text="  A · Excel de control (el que ya usan)  ")
+        a.pack(fill="x", padx=10, pady=5)
+        ttk.Label(a, style="Hint.TLabel", justify="left", text=(
+            "Importar: cada hoja «Rev (N)» pasa a ser una revisión de la lista; la más nueva queda como la revisión actual.\n"
+            "El Excel vinculado se modifica al guardar: los cambios van a su última hoja Rev (N); "
+            "la hoja nueva se agrega solo con «Nueva revisión» (arriba).")
+                  ).pack(anchor="w", padx=10, pady=(6, 2))
+        fb = ttk.Frame(a)
+        fb.pack(anchor="w", padx=10, pady=(2, 8))
+        ttk.Button(fb, text="📂  Importar Excel de control…", style="Accent.TButton",
+                   command=self.importar).pack(side="left")
+        ttk.Button(fb, text="💾  Exportar a Excel nuevo…", command=self.exportar).pack(side="left", padx=10)
+        ttk.Button(fb, text="📊  Generar KPI y Dashboard en el Excel",
+                   command=self.actualizar_dashboard).pack(side="left")
+        fv = ttk.Frame(a)
+        fv.pack(fill="x", padx=10, pady=(0, 8))
+        self.lbl_excel = ttk.Label(fv, style="Hint.TLabel", wraplength=900, justify="left")
+        self.lbl_excel.pack(side="left")
+        ttk.Button(fv, text="🔗 Vincular / cambiar Excel…", command=self.vincular).pack(side="right")
+
+        p = ttk.LabelFrame(f, text="  Informe de ingeniería (PDF) · actualizar estados  ")
+        p.pack(fill="x", padx=10, pady=5)
+        ttk.Label(p, style="Hint.TLabel", justify="left", text=(
+            "Cargá el PDF del informe: la app lee la primera tabla (Nº, Rev, Título, Observaciones), te muestra "
+            "qué cambiaría y, si confirmás, actualiza el estado de cada documento.")).pack(anchor="w", padx=10, pady=(6, 2))
+        ttk.Button(p, text="📄  Cargar informe PDF…", style="Accent.TButton",
+                   command=self.cargar_informe).pack(anchor="w", padx=10, pady=(2, 8))
+
+        b = ttk.LabelFrame(f, text="  B · Listado general de documentos de la obra  ")
+        b.pack(fill="x", padx=10, pady=5)
+        ttk.Label(b, style="Hint.TLabel", justify="left", text=(
+            "Cargá el archivo (Excel o CSV) con TODOS los documentos de la obra. Después marcás cuáles entregamos "
+            "nosotros: solo esos pasan a Consultar y Modificar.")).pack(anchor="w", padx=10, pady=(6, 2))
+        fb = ttk.Frame(b)
+        fb.pack(anchor="w", padx=10, pady=(2, 4))
+        ttk.Button(fb, text="📂  Cargar archivo con el listado…", style="Accent.TButton",
+                   command=self.cargar_listado).pack(side="left")
+        ttk.Button(fb, text="☑  Elegir cuáles entregamos nosotros…",
+                   command=self.elegir_nuestros).pack(side="left", padx=10)
+        self.lbl_listado = ttk.Label(b, style="Hint.TLabel")
+        self.lbl_listado.pack(anchor="w", padx=10, pady=(0, 8))
+
+        c = ttk.LabelFrame(f, text="  C · Cargar a mano  ")
+        c.pack(fill="both", expand=True, padx=10, pady=(5, 10))
+        self.v_nuestro = tk.BooleanVar(value=True)
+        ttk.Checkbutton(c, text="Lo entregamos nosotros (aparece en Consultar y Modificar). "
+                                "Si lo desmarcás, queda solo en el listado general.",
+                        variable=self.v_nuestro).pack(anchor="w", padx=10, pady=(6, 2))
+
+        ttk.Label(c, text="Un documento", font=(FUENTE, 10, "bold"), foreground=AZUL_OSC).pack(
+            anchor="w", padx=10, pady=(6, 0))
+        self.nv = {k: tk.StringVar() for k in ("cod_cliente", "cod_epen", "titulo")}
+        fr1 = ttk.Frame(c)
+        fr1.pack(fill="x", padx=10)
+        for i, (k, t, w) in enumerate([("cod_cliente", "Documento cliente", 34), ("cod_epen", E("Documento EPEN"), 30),
+                                       ("titulo", "Título del documento", 70)]):
+            fr = ttk.Frame(fr1)
+            fr.grid(row=0, column=i, padx=(0, 10), pady=4, sticky="w")
+            ttk.Label(fr, text=t, style="Hint.TLabel").pack(anchor="w")
+            ttk.Entry(fr, textvariable=self.nv[k], width=w).pack(anchor="w")
+        ttk.Button(fr1, text="➕  Agregar", style="Accent.TButton", command=self.agregar_uno).grid(
+            row=0, column=4, sticky="s", pady=4)
+
+        ttk.Label(c, text="Varios a la vez (pegar desde Excel)", font=(FUENTE, 10, "bold"),
+                  foreground=AZUL_OSC).pack(anchor="w", padx=10, pady=(8, 0))
+        ttk.Label(c, style="Hint.TLabel", justify="left", text=(
+            f"Pegá las columnas DOCUMENTO CLIENTE | DOCUMENTO {NOMBRE_CLI.upper()} | TÍTULO (una fila por documento). "
+            f"Con 2 columnas se toman como {NOMBRE_CLI} | Título; con 1, como Título. Los ya cargados no se duplican.")
+                  ).pack(anchor="w", padx=10)
+        self.txt_masa = tk.Text(c, height=4, wrap="none", font=("Consolas", 10), relief="solid", bd=1)
+        self.txt_masa.pack(fill="both", expand=True, padx=10, pady=4)
+        ttk.Button(c, text="➕  Cargar lista pegada", style="Accent.TButton",
+                   command=self.agregar_masa).pack(anchor="w", padx=10, pady=(2, 8))
+
+    def _contexto(self):
+        proy, cli = self.v_proy.get().strip(), self.v_cli.get().strip()
+        if not proy:
+            messagebox.showwarning("Falta el proyecto", "Escribí o elegí el Proyecto en la parte de arriba.")
+            return None
+        return proy, cli
+
+    def _post_carga(self, proy):
+        self.cambiar_proyecto()
+        self.v_proy.set(proy)
+
+    def agregar_uno(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        d = {k: v.get().strip() for k, v in self.nv.items()}
+        if not (d["titulo"] or d["cod_epen"] or d["cod_cliente"]):
+            messagebox.showwarning("Faltan datos", "Cargá al menos el título o un código.")
+            return
+        d.update(proyecto=ctx[0], cliente=ctx[1], entregado=0, nuestro=int(self.v_nuestro.get()))
+        doc_id, creado = db.agregar(self.con, d)
+        if not creado:
+            messagebox.showinfo("Ya existe", "Ese documento ya está cargado en este proyecto.")
+            return
+        for v in self.nv.values():
+            v.set("")
+        self._post_carga(ctx[0])
+        if self.v_nuestro.get():
+            self.seleccionar(doc_id)
+
+    def agregar_masa(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        nuevos = repes = 0
+        for linea in self.txt_masa.get("1.0", "end").splitlines():
+            if not linea.strip():
+                continue
+            p = [x.strip() for x in linea.split("\t")]
+            cc, ce, t = (p + ["", "", ""])[:3] if len(p) >= 3 else (
+                ("", p[0], p[1]) if len(p) == 2 else ("", "", p[0]))
+            _, creado = db.agregar(self.con, dict(proyecto=ctx[0], cliente=ctx[1], cod_cliente=cc,
+                                                  cod_epen=ce, titulo=t, entregado=0,
+                                                  nuestro=int(self.v_nuestro.get())))
+            nuevos += creado
+            repes += not creado
+        self.txt_masa.delete("1.0", "end")
+        self._post_carga(ctx[0])
+        messagebox.showinfo("Carga terminada", f"Documentos nuevos: {nuevos}\nYa existentes (omitidos): {repes}")
+        if nuevos and self.v_nuestro.get():
+            self.nb.select(self.tab_cons)
+
+    def cargar_informe(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        ruta = filedialog.askopenfilename(title="Informe de ingeniería (PDF)", filetypes=[("PDF", "*.pdf")])
+        if not ruta:
+            return
+        try:
+            info = informe.leer_informe(ruta)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("No pude leer el PDF", str(e))
+            return
+        if not info["filas"]:
+            messagebox.showwarning("Sin tabla", "No encontré la tabla (Nº, Rev, Título, Observaciones) en el PDF.")
+            return
+        dlg = InformeDialog(self, self.con, ctx[0], info)
+        if dlg.aplicado:
+            extra = self.guardar_en_excel()
+            self.refrescar()
+            messagebox.showinfo("Informe aplicado", f"Se actualizaron {dlg.aplicado} documentos con el informe "
+                                                    f"N°{info['numero']}." + (f"\n\n{extra[2:]}." if extra and not extra.startswith("⚠") else ""))
+        else:
+            es_viejo = informe.informe_viejo(self.con, ctx[0], info)[0]
+            messagebox.showinfo("Informe", "No se modificó ningún documento." + (
+                f"\n\nEl informe N°{info['numero']} es anterior al último aplicado, por eso no se puede usar." if es_viejo else ""))
+
+    def cargar_listado(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        ruta = filedialog.askopenfilename(title="Archivo con el listado general de documentos",
+                                          filetypes=[("Excel o CSV", "*.xlsx *.xlsm *.csv"), ("Todos", "*.*")])
+        if not ruta:
+            return
+        try:
+            dlg = MapeoDialog(self, ruta)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("No pude leer el archivo", str(e))
+            return
+        if not dlg.resultado:
+            return
+        filas, primera, mapa = dlg.resultado
+        nuevos, repes = db.importar_listado(self.con, filas, primera, mapa, ctx[0], ctx[1])
+        self._post_carga(ctx[0])
+        messagebox.showinfo("Listado cargado", f"Documentos nuevos: {nuevos}\nYa existentes (omitidos): {repes}\n\n"
+                                               "Ahora marcá cuáles entregamos nosotros.")
+        self.elegir_nuestros()
+
+    def elegir_nuestros(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        if not db.listar_general(self.con, ctx[0]):
+            messagebox.showinfo("Listado vacío", "Todavía no hay documentos cargados en este proyecto.")
+            return
+        SelectorDialog(self, self.con, ctx[0])
+        self.refrescar()
+
+    def importar(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        ruta = filedialog.askopenfilename(title="Excel de control de documentos",
+                                          filetypes=[("Excel", "*.xlsx *.xlsm")])
+        if not ruta:
+            return
+        try:
+            n, h, s = db.importar_excel(self.con, ruta, ctx[0], ctx[1])
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("Error al importar", str(e))
+            return
+        self._post_carga(ctx[0])
+        messagebox.showinfo("Importación terminada",
+                            f"Documentos nuevos: {n}\nRegistros de revisiones anteriores: {h}\n"
+                            f"Filas de hojas viejas sin documento equivalente: {s}\n\n"
+                            f"Este Excel quedó vinculado: al guardar cambios se actualiza su última hoja Rev (N).")
+        self.nb.select(self.tab_cons)
+
+    def actualizar_dashboard(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        ruta = db.excel_de(self.con, ctx[0])
+        if not ruta or not os.path.exists(ruta):
+            ruta = filedialog.askopenfilename(title="Excel de control donde van los KPI y el Dashboard",
+                                              filetypes=[("Excel", "*.xlsx *.xlsm")])
+            if not ruta:
+                return
+            db.vincular_excel(self.con, ctx[0], ruta)
+        try:
+            respaldo = db.actualizar_dashboard_excel(self.con, ruta, ctx[0])
+        except PermissionError:
+            messagebox.showerror("No se pudo modificar el Excel",
+                                 "No pude escribir en el Excel: probablemente está abierto. Cerralo y reintentá.")
+            return
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("No se pudieron crear los KPI", str(e))
+            return
+        self.refrescar()
+        messagebox.showinfo("KPI y Dashboard actualizados",
+                            "Se generaron las hojas «KPI N°1», «KPI N°2» y «Dashboard» (después de las hojas Rev). "
+                            "También se completaron las fechas de devolución / reenvío en las hojas Rev "
+                            f"(columnas M y N).\n\nCopia de respaldo:\n{respaldo}")
+
+    def vincular(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        ruta = filedialog.askopenfilename(title="Excel de control de documentos que se va a modificar",
+                                          filetypes=[("Excel", "*.xlsx *.xlsm")])
+        if ruta:
+            db.asegurar_proyecto(self.con, ctx[0], ctx[1])
+            db.vincular_excel(self.con, ctx[0], ruta)
+            self.refrescar()
+
+    def exportar(self):
+        if not self._admin():
+            return
+        ctx = self._contexto()
+        if not ctx:
+            return
+        ruta = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")],
+                                            initialfile=f"{ctx[0]} - Control de documentos.xlsx")
+        if not ruta:
+            return
+        try:
+            db.exportar_excel(self.con, ruta, ctx[0])
+        except PermissionError:
+            messagebox.showerror("No se pudo guardar",
+                                 "No pude escribir el archivo: probablemente está abierto en Excel.\n"
+                                 "Cerralo y volvé a exportar, o guardalo con otro nombre.")
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("Error al exportar", str(e))
+        else:
+            messagebox.showinfo("Exportado", f"Archivo guardado en:\n{ruta}")
+
+    # ============================================================ pestaña 2: consultar
+    def _armar_consulta(self):
+        f = self.tab_cons
+        top = ttk.Frame(f)
+        top.pack(fill="x", padx=10, pady=(10, 4))
+        ttk.Label(top, text="🔍  Buscar documento", style="Big.TLabel").pack(side="left")
+        self.v_buscar = tk.StringVar()
+        self.v_buscar.trace_add("write", lambda *_: self._llenar_consulta())
+        e = ttk.Entry(top, textvariable=self.v_buscar, font=(FUENTE, 12), width=48)
+        e.pack(side="left", padx=12)
+        ttk.Button(top, text="✖ Limpiar", command=lambda: self.v_buscar.set("")).pack(side="left")
+        self.lbl_cuenta = ttk.Label(top, style="Hint.TLabel")
+        self.lbl_cuenta.pack(side="right")
+        ttk.Label(f, text="Escribí parte del nombre, del código o del estado (ej.: «señales», «0259», «aprobado»). "
+                          "Hacé clic en un documento para ver su ficha.", style="Hint.TLabel").pack(anchor="w", padx=12)
+        self.lbl_aviso = tk.Label(f, bg="#FFF4CE", fg="#7A5B00", font=(FUENTE, 10, "bold"), pady=4)
+        self._leyenda(f)
+
+        pw = ttk.PanedWindow(f, orient="vertical")
+        pw.pack(fill="both", expand=True, padx=10, pady=8)
+        cont = ttk.Frame(pw)
+        pw.add(cont, weight=3)
+        cols = [("cod_epen", E("Documento EPEN"), 175), ("cod_cliente", "Documento cliente", 215),
+                ("titulo", "Título", 270), ("rev_grupo", "Rev. G.O.", 70), ("rev_cliente", "Rev. cliente", 80),
+                ("rev_epen", E("Rev. EPEN"), 80), ("entregado", "Entregado", 80),
+                ("estado_cliente", "Estado cliente", 120), ("estado_epen", E("Estado EPEN"), 190)]
+        self.tree = ttk.Treeview(cont, columns=[c[0] for c in cols], show="headings", selectmode="browse")
+        for k, t, w in cols:
+            self.tree.heading(k, text=t)
+            self.tree.column(k, width=w, anchor="w" if w >= 190 else "center")
+        sb = ttk.Scrollbar(cont, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.tree.pack(fill="both", expand=True)
+        self._tags(self.tree)
+        self.tree.bind("<<TreeviewSelect>>", self._sel_consulta)
+        self.tree.bind("<Double-1>", lambda _: self.ir_a_modificar())
+
+        self.ficha = ttk.LabelFrame(pw, text="  Ficha del documento  ")
+        pw.add(self.ficha, weight=2)
+        self.lbl_tit = ttk.Label(self.ficha, text="Seleccioná un documento de la lista", style="Big.TLabel",
+                                 wraplength=1100)
+        self.lbl_tit.pack(anchor="w", padx=12, pady=(8, 0))
+        self.lbl_cod = ttk.Label(self.ficha, text="", style="Hint.TLabel")
+        self.lbl_cod.pack(anchor="w", padx=12)
+        self.fr_badges = ttk.Frame(self.ficha)
+        self.fr_badges.pack(fill="x", padx=12, pady=8)
+        self.lbl_com = ttk.Label(self.ficha, text="", wraplength=1100, justify="left")
+        self.lbl_com.pack(anchor="w", padx=12)
+        self.lbl_kpi = ttk.Label(self.ficha, text="", wraplength=1100, justify="left", foreground=AZUL_OSC)
+        self.lbl_kpi.pack(anchor="w", padx=12, pady=(2, 0))
+
+        bar = ttk.Frame(self.ficha)
+        bar.pack(fill="x", padx=12, pady=(4, 2))
+        ttk.Label(bar, text="Evolución del documento", font=(FUENTE, 10, "bold"),
+                  foreground=AZUL_OSC).pack(side="left")
+        self.btn_ir_mod = ttk.Button(bar, text="✏️  Modificar este documento", style="Accent.TButton",
+                                     command=self.ir_a_modificar)
+        if self.rol == "admin":
+            self.btn_ir_mod.pack(side="right")
+        hcols = [("lista", "Revisión lista", 100), ("fecha", "Fecha", 120), ("rev_grupo", "Rev. G.O.", 75),
+                 ("rev_cliente", "Rev. cliente", 85), ("rev_epen", E("Rev. EPEN"), 80), ("entregado", "Entregado", 80),
+                 ("estado_cliente", "Estado cliente", 140), ("estado_epen", E("Estado EPEN"), 200),
+                 ("origen", "Origen", 140)]
+        self.tree_h = ttk.Treeview(self.ficha, columns=[c[0] for c in hcols], show="headings", height=5)
+        for k, t, w in hcols:
+            self.tree_h.heading(k, text=t)
+            self.tree_h.column(k, width=w, anchor="center")
+        self.tree_h.pack(fill="both", expand=True, padx=12, pady=(2, 10))
+        self._tags(self.tree_h)
+
+    def _llenar_consulta(self):
+        if not hasattr(self, "tree"):
+            return
+        filas = self.filas(self.v_buscar.get())
+        self.tree.delete(*self.tree.get_children())
+        for d in filas:
+            self.tree.insert("", "end", iid=str(d["id"]), tags=(clase_doc(d),), values=(
+                d["cod_epen"], d["cod_cliente"], d["titulo"], d["rev_grupo"], d["rev_cliente"],
+                d["rev_epen"], "✔" if d["entregado"] else "—", d["estado_cliente"], d["estado_epen"]))
+        total = len(self.filas(""))
+        self.lbl_cuenta.config(text=f"{len(filas)} de {total} documentos")
+        if self.es_actual():
+            self.lbl_aviso.pack_forget()
+            self.btn_ir_mod.state(["!disabled"])
+        else:
+            self.lbl_aviso.config(text=f"Estás viendo la Revisión N°{self.n_visto()} de la lista "
+                                       f"(solo lectura). Elegí «(actual)» arriba para modificar.")
+            self.lbl_aviso.pack(fill="x", padx=10, pady=(4, 0), before=self.tree.master.master)
+            self.btn_ir_mod.state(["disabled"])
+        if self.sel_id and self.tree.exists(str(self.sel_id)):
+            self.tree.selection_set(str(self.sel_id))
+        else:
+            self._limpiar_ficha()
+
+    def _limpiar_ficha(self):
+        self.lbl_tit.config(text="Seleccioná un documento de la lista")
+        self.lbl_cod.config(text="")
+        self.lbl_com.config(text="")
+        self.lbl_kpi.config(text="")
+        for w in self.fr_badges.winfo_children():
+            w.destroy()
+        self.tree_h.delete(*self.tree_h.get_children())
+
+    def _sel_consulta(self, _=None):
+        s = self.tree.selection()
+        if not s:
+            return
+        self.sel_id = int(s[0])
+        self._mostrar_ficha()
+
+    def _mostrar_ficha(self):
+        d = db.get_doc(self.con, self.sel_id)
+        if not d:
+            return
+        vista = next((r for r in self.filas("") if r["id"] == self.sel_id), d)
+        self.lbl_tit.config(text=d["titulo"])
+        self.lbl_cod.config(text=f"{NOMBRE_CLI}: {d['cod_epen'] or '—'}     Cliente: {d['cod_cliente'] or '—'}     "
+                                                                  f"Última actualización: {vista['actualizado']}")
+        com = vista["comentarios"]
+        self.lbl_com.config(text=f"💬 {com}" if com else "")
+        self.lbl_kpi.config(text=self._texto_kpi(d))
+        for w in self.fr_badges.winfo_children():
+            w.destroy()
+        items = [("Rev. Grupo Oeste", vista["rev_grupo"], "neutro"),
+                 ("Rev. emitida al cliente", vista["rev_cliente"], "neutro"),
+                 (E("Rev. emitida a EPEN"), vista["rev_epen"], "neutro"),
+                 ("Entrega", "Entregado" if vista["entregado"] else "No entregado",
+                  "ok" if vista["entregado"] else "vacio"),
+                 ("Estado cliente", vista["estado_cliente"], db.clase_estado(vista["estado_cliente"])),
+                 (E("Estado EPEN"), vista["estado_epen"], db.clase_estado(vista["estado_epen"]))]
+        for cap, val, clase in items:
+            box = ttk.Frame(self.fr_badges)
+            box.pack(side="left", padx=(0, 14))
+            ttk.Label(box, text=cap, style="Hint.TLabel").pack(anchor="w")
+            if clase == "neutro":
+                bg, fg = ("#334155", "white") if val else COLORES["vacio"][1:]
+            else:
+                bg, fg = COLORES[clase][1:]
+            tk.Label(box, text=val or "—", bg=bg, fg=fg, font=(FUENTE, 12, "bold"), padx=14, pady=5).pack()
+        self.tree_h.delete(*self.tree_h.get_children())
+        for h in db.historial(self.con, self.sel_id):
+            self.tree_h.insert("", "end", tags=(clase_doc(h),), values=(
+                f"N°{h['lista_n']}" if h["lista_n"] else "(edición)", h["fecha"], h["rev_grupo"],
+                h["rev_cliente"], h["rev_epen"], "✔" if h["entregado"] else "—", h["estado_cliente"],
+                h["estado_epen"], h["origen"]))
+
+    @staticmethod
+    def _f(fecha):
+        return fecha.strftime("%d/%m/%Y") if fecha else "—"
+
+    def _texto_kpi(self, d):
+        """Una línea con lo que miden los KPI para este documento: plazo de entrega y ciclos de corrección."""
+        ev = kpi.evaluar(d)
+        partes = [f"📅 Fecha límite: {self._f(ev['plan'])}", f"Entrega real: {self._f(ev['real'])}"]
+        if ev["desvio"] is not None:
+            partes[-1] += (f" ({abs(ev['desvio'])} días de atraso)" if ev["desvio"] > 0
+                           else f" ({abs(ev['desvio'])} días antes)" if ev["desvio"] < 0 else " (el día límite)")
+        partes.append(f"Plazo: {ev['plazo']}")
+        if d["transmittal"]:
+            partes.append(f"Transmittal: {d['transmittal']}")
+        txt = "   ·   ".join(partes)
+        for c in db.ciclos_doc(self.con, d["id"]):
+            dev, rei = db.parse_fecha(c["fecha_devolucion"]), db.parse_fecha(c["fecha_reenvio"])
+            if dev and rei:
+                detalle = f"devuelta {self._f(dev)}, reenviada {self._f(rei)} ({(rei - dev).days} días)"
+            elif dev:
+                detalle = f"devuelta {self._f(dev)}, pendiente de reenvío"
+            else:
+                detalle = f"reenviada {self._f(rei)}" if rei else "sin fechas cargadas"
+            txt += f"\n🔁 Corrección Rev {c['rev'] or '—'}: {detalle}"
+        return txt
+
+    def ir_a_modificar(self):
+        if self.rol != "admin" or self.sel_id is None or not self.es_actual():
+            return
+        self.nb.select(self.tab_mod)
+
+    # ============================================================ pestaña 3: modificar
+    # ============================================================ pestaña 4: dashboard
+    def _tarjetas(self, parent, tarjetas, tam=28):
+        for w in parent.winfo_children():
+            w.destroy()
+        for i, (rotulo, valor, color) in enumerate(tarjetas):
+            parent.columnconfigure(i, weight=1, uniform="tarjeta")
+            box = tk.Frame(parent, bg=color)
+            box.grid(row=0, column=i, sticky="nsew", padx=3)
+            tk.Label(box, text=rotulo, bg=color, fg="white", font=(FUENTE, 9, "bold")).pack(pady=(10, 0))
+            tk.Label(box, text=str(valor), bg=color, fg="white", font=(FUENTE, tam, "bold")).pack(pady=(2, 10))
+
+    def _armar_dashboard(self):
+        f = self.tab_dash
+        self.lbl_dash = ttk.Label(f, style="Big.TLabel")
+        self.lbl_dash.pack(anchor="w", padx=12, pady=(12, 0))
+        self.lbl_dash2 = ttk.Label(f, style="Hint.TLabel")
+        self.lbl_dash2.pack(anchor="w", padx=12)
+        self.fr_cards = ttk.Frame(f)
+        self.fr_cards.pack(fill="x", padx=10, pady=12)
+        fr = ttk.Frame(f)
+        fr.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        fr.rowconfigure(0, weight=1)
+        self.cv_ent = tk.Canvas(fr, bg="white", highlightthickness=1, highlightbackground="#C9D0DB")
+        self.cv_est = tk.Canvas(fr, bg="white", highlightthickness=1, highlightbackground="#C9D0DB")
+        self.cv_plazo = tk.Canvas(fr, bg="white", highlightthickness=1, highlightbackground="#C9D0DB")
+        for i, cv in enumerate((self.cv_ent, self.cv_est, self.cv_plazo)):
+            fr.columnconfigure(i, weight=1, uniform="torta")
+            cv.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 4, 0 if i == 2 else 4))
+            cv.bind("<Configure>", lambda _e: self._llenar_dashboard())
+
+    def _llenar_dashboard(self):
+        """Tarjetas y tortas con los datos de la revisión elegida arriba (por defecto, la actual)."""
+        if not hasattr(self, "cv_ent") or not self.cv_ent.winfo_exists():
+            return
+        docs = self.filas("")
+        total = len(docs)
+        entreg = sum(1 for d in docs if d["entregado"])
+        cls = {k: 0 for k in ORDEN_CLASE}
+        for d in docs:
+            cls[clase_doc(d)] += 1
+        n = self.n_visto()
+        proy = self.v_proy.get().strip()
+        _, r1 = kpi.kpi1(self.con, proy)
+        _, r2 = kpi.kpi2(self.con, proy)
+        self.lbl_dash.config(text=f"Dashboard · Revisión N°{n}" + (" (actual)" if self.es_actual() else ""))
+        self.lbl_dash2.config(text=f"Proyecto: {self.v_proy.get()}   ·   Cliente: {self.v_cli.get() or '—'}   ·   "
+                                   f"{total} documentos que entregamos nosotros   ·   "
+                                   "cambiá la revisión en el selector de arriba   ·   los KPI son del estado actual")
+        pct = round(100 * entreg / total) if total else 0
+        cumpl = f"{round(100 * r1['cumplimiento'])}%" if r1["cumplimiento"] is not None else "—"
+        resp = f"{r2['promedio']:.1f} d".replace(".", ",") if r2["promedio"] is not None else "—"
+        self._tarjetas(self.fr_cards, [
+            ("Documentos a entregar", total, AZUL_OSC), ("Entregados", entreg, "#1E8E5A"),
+            ("% entregado", f"{pct}%", "#1E8E5A"), ("Aprobados (incl. APC)", cls["ok"] + cls["obs"], "#1E8E5A"),
+            ("En revisión", cls["rev"], "#2F6FD6"), ("Devueltos (DPC)", cls["mal"], "#D64545"),
+            ("Cumplimiento de entregas", cumpl, "#6B4FA0"), ("Respuesta a correcciones", resp, "#6B4FA0")])
+        self._torta(self.cv_ent, "Entregados vs. sin entregar",
+                    [("Entregados", entreg, "#1E8E5A"), ("Sin entregar", total - entreg, "#B8C0CC")])
+        nombres = {"ok": "Aprobado / APC", "obs": "Aprob. con observ.", "mal": "DPC / rechazado", "rev": "En revisión",
+                   "nobs": "No se observa", "visto": "Visto", "vacio": "Sin estado"}
+        self._torta(self.cv_est, "Estado de los documentos",
+                    [(nombres[k], cls[k], COLORES[k][1] if k != "vacio" else "#B8C0CC")
+                     for k in ("ok", "obs", "mal", "rev", "nobs", "visto", "vacio")])
+        p = r1["plazos"]
+        self._torta(self.cv_plazo, "Cumplimiento del cronograma",
+                    [("En término", p["Entregado en término"], "#1E8E5A"),
+                     ("Con atraso", p["Entregado con atraso"], "#F4A261"), ("Vencidos", p["Vencido"], "#D64545"),
+                     ("Pendientes", p["Pendiente en plazo"] + p["Próximo a vencer"], "#2F6FD6"),
+                     ("Sin fecha límite", p["Sin planificación"], "#B8C0CC")])
+
+    @staticmethod
+    def _torta(cv, titulo, partes):
+        cv.delete("all")
+        w, h = max(cv.winfo_width(), 300), max(cv.winfo_height(), 260)
+        cv.create_text(w / 2, 24, text=titulo, font=(FUENTE, 12, "bold"), fill=AZUL_OSC)
+        total = sum(n for _, n, _ in partes)
+        if total == 0:
+            cv.create_text(w / 2, h / 2, text="Sin datos", fill=GRIS_TXT, font=(FUENTE, 11))
+            return
+        d = max(min(h - 80, w * 0.46), 110)
+        x0, y0 = 20, 52
+        caja = (x0, y0, x0 + d, y0 + d)
+        cx, cy, ang = x0 + d / 2, y0 + d / 2, 90.0
+        for nombre, n, color in partes:
+            if n == 0:
+                continue
+            ext = 360 * n / total
+            if ext >= 359.9:
+                cv.create_oval(caja, fill=color, outline="white", width=2)
+            else:
+                cv.create_arc(caja, start=ang, extent=-ext, fill=color, outline="white", width=2)
+            if ext >= 20:
+                mid = math.radians(ang - ext / 2)
+                cv.create_text(cx + d * 0.32 * math.cos(mid), cy - d * 0.32 * math.sin(mid),
+                               text=f"{round(100 * n / total)}%", font=(FUENTE, 11, "bold"),
+                               fill="#1F2937" if color == "#B8C0CC" else "white")
+            ang -= ext
+        lx, ly = x0 + d + 22, y0 + 4
+        for nombre, n, color in partes:
+            cv.create_rectangle(lx, ly, lx + 14, ly + 14, fill=color, outline="")
+            cv.create_text(lx + 22, ly + 7, anchor="w", font=(FUENTE, 10),
+                           text=f"{nombre}: {n} ({round(100 * n / total)}%)")
+            ly += 26
+
+    # ============================================================ pestaña 5: KPI
+    def _tabla_kpi(self, parent, cols):
+        cont = ttk.Frame(parent)
+        cont.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        tree = ttk.Treeview(cont, columns=[c[0] for c in cols], show="headings", selectmode="browse")
+        for k, t, w, an in cols:
+            tree.heading(k, text=t)
+            tree.column(k, width=w, anchor=an)
+        sb = ttk.Scrollbar(cont, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tree.pack(fill="both", expand=True)
+        tree.bind("<<TreeviewSelect>>", lambda _e, t=tree: self._sel_kpi(t))
+        tree.bind("<Double-1>", lambda _e: self.ir_a_modificar())
+        return tree
+
+    def _sel_kpi(self, tree):
+        s = tree.selection()
+        if s and s[0].split("-")[0].isdigit():
+            self.sel_id = int(s[0].split("-")[0])
+
+    def _armar_kpi(self):
+        f = self.tab_kpi
+        ttk.Label(f, text="KPI del control de documentos", style="Big.TLabel").pack(anchor="w", padx=12, pady=(12, 0))
+        ttk.Label(f, style="Hint.TLabel", justify="left", text=(
+            "Son los mismos KPI de las hojas «KPI N°1» y «KPI N°2» del Excel, calculados con el estado actual. "
+            "Las fechas se cargan en «Modificar» (Fechas para los KPI). Doble clic en un documento para modificarlo.")
+                  ).pack(anchor="w", padx=12)
+        self.nb_kpi = ttk.Notebook(f)
+        self.nb_kpi.pack(fill="both", expand=True, padx=10, pady=10)
+        t1, t2 = ttk.Frame(self.nb_kpi), ttk.Frame(self.nb_kpi)
+        self.nb_kpi.add(t1, text="  KPI N°1 · Cumplimiento de entrega  ")
+        self.nb_kpi.add(t2, text="  KPI N°2 · Respuesta a correcciones  ")
+        self.fr_k1 = ttk.Frame(t1)
+        self.fr_k1.pack(fill="x", padx=6, pady=(8, 2))
+        self.lbl_k1_doc = ttk.Label(t1, font=(FUENTE, 10, "bold"), foreground=AZUL_OSC)
+        self.lbl_k1_doc.pack(anchor="w", padx=10, pady=(0, 6))
+        self.fr_k2 = ttk.Frame(t2)
+        self.fr_k2.pack(fill="x", padx=6, pady=(8, 2))
+        self.lbl_k2_doc = ttk.Label(t2, font=(FUENTE, 10, "bold"), foreground=AZUL_OSC)
+        self.lbl_k2_doc.pack(anchor="w", padx=10, pady=(0, 6))
+        self.tree_k1 = self._tabla_kpi(t1, [
+            ("cod", E("Documento EPEN"), 165, "w"), ("titulo", "Título", 215, "w"), ("ent", "Entregado", 85, "center"),
+            ("estado", E("Estado EPEN"), 140, "center"), ("plan", "Fecha planificada", 130, "center"),
+            ("real", "Fecha real", 95, "center"), ("desvio", "Desvío (días)", 105, "center"),
+            ("cumpl", "Cumplimiento", 110, "center"), ("plazo", "Estado de plazo", 150, "center"),
+            ("trans", "Transmittal", 90, "center")])
+        for plazo, color in COLOR_PLAZO.items():
+            if color:
+                self.tree_k1.tag_configure(plazo, background=color)
+        self.tree_k2 = self._tabla_kpi(t2, [
+            ("cod", E("Documento EPEN"), 175, "w"), ("titulo", "Título", 340, "w"),
+            ("rev", "Rev. devuelta", 95, "center"), ("nueva", "Nueva rev.", 85, "center"),
+            ("dev", "Fecha devolución", 115, "center"), ("rei", "Fecha reenvío", 105, "center"),
+            ("dias", "Días", 70, "center"), ("estado", "Estado", 95, "center"), ("lista", "Detectado en", 100, "center")])
+        self.tree_k2.tag_configure("Cerrado", background="#DDF3E6")
+        self.tree_k2.tag_configure("Pendiente", background="#FCE5CD")
+
+    def _llenar_kpi(self):
+        if not hasattr(self, "tree_k1") or not self.tree_k1.winfo_exists():
+            return
+        proy = self.v_proy.get().strip()
+        filas, r1 = kpi.kpi1(self.con, proy)
+        ciclos, r2 = kpi.kpi2(self.con, proy)
+        ruta_xl = db.excel_de(self.con, proy)
+        del_excel = kpi.resumen_excel(ruta_xl) if ruta_xl and os.path.exists(ruta_xl) else None
+        if del_excel:  # máximo desvío y promedio: se toman del Excel vinculado, no se recalculan
+            r1.update(del_excel)
+        cumpl = (f"{round(r1['cumplimiento'] * 100 + 1e-9, 1)}%".replace(".", ",")
+                 if r1["cumplimiento"] is not None else "Sin datos")
+        self._tarjetas(self.fr_k1, [("Documentos", r1["total"], AZUL_OSC), ("Entregados", r1["entregados"], "#1E8E5A"),
+                                    ("Cumplimiento", cumpl, "#6B4FA0"), ("Entregas evaluadas", r1["evaluadas"], "#2F6FD6"),
+                                    ("Vencidos", r1["vencidos"], "#D64545"),
+                                    ("Máximo desvío", f"{r1['max_desvio']} días" if r1["max_desvio"] is not None else "Sin atraso", "#E08A2E"),
+                                    ("Promedio de desvío", f"{round(r1['prom_desvio'] + 1e-9, 1)} días".replace(".", ",")
+                                     if r1["prom_desvio"] is not None else "Sin datos", "#4F7CAC")], tam=20)
+        self.lbl_k1_doc.config(text=f"Máximo desvío — Documento: {r1['max_doc'] or 'Sin atraso'}"
+                                    + ("   (máximo y promedio tomados del Excel)" if del_excel else ""))
+        self.lbl_k2_doc.config(text=f"Mayor demora acumulada — Documento: {r2['mayor_doc'] or 'Sin datos'}")
+        prom = f"{r2['promedio']:.1f}".replace(".", ",") if r2["promedio"] is not None else "Sin datos"
+        mayor = f"{r2['mayor_demora']} días" if r2["mayor_demora"] is not None else "Sin datos"
+        self._tarjetas(self.fr_k2, [("Promedio de días", prom, "#6B4FA0"), ("Ciclos reenviados", r2["cerrados"], "#1E8E5A"),
+                                    ("Pendientes", r2["pendientes"], "#D64545"), ("Mayor demora acumulada", mayor, "#2F6FD6")],
+                       tam=22)
+        self.tree_k1.delete(*self.tree_k1.get_children())
+        for x in filas:
+            d = x["doc"]
+            self.tree_k1.insert("", "end", iid=str(d["id"]), tags=(x["plazo"],), values=(
+                d["cod_epen"] or d["cod_cliente"], d["titulo"], "✔" if d["entregado"] else "—",
+                d["estado_epen"], self._f(x["plan"]).replace("—", ""), self._f(x["real"]).replace("—", ""),
+                "" if x["desvio"] is None else x["desvio"], x["cumplimiento"], x["plazo"], x["transmittal"]))
+        self.tree_k2.delete(*self.tree_k2.get_children())
+        for i, c in enumerate(ciclos):
+            self.tree_k2.insert("", "end", iid=f"{c['doc_id']}-{i}", tags=(c["estado"],), values=(
+                c["cod_epen"], c["titulo"], c["rev_devuelta"], c["nueva_rev"], self._f(c["devolucion"]).replace("—", ""),
+                self._f(c["reenvio"]).replace("—", ""), "" if c["dias"] is None else c["dias"], c["estado"],
+                f"Revisión N°{c['lista']}"))
+
+    # ============================================================ pestaña 3: modificar
+
+    def _armar_modificar(self):
+        f = self.tab_mod
+        pw = ttk.PanedWindow(f, orient="horizontal")
+        pw.pack(fill="both", expand=True, padx=10, pady=10)
+
+        izq = ttk.Frame(pw)
+        pw.add(izq, weight=2)
+        ttk.Label(izq, text="1. Elegí el documento", style="Big.TLabel").pack(anchor="w")
+        self.v_buscar_m = tk.StringVar()
+        self.v_buscar_m.trace_add("write", lambda *_: self._llenar_lista_mod())
+        ttk.Entry(izq, textvariable=self.v_buscar_m, font=(FUENTE, 11)).pack(fill="x", pady=6)
+        ttk.Label(izq, text="🔍 Escribí para filtrar la lista", style="Hint.TLabel").pack(anchor="w")
+        cont = ttk.Frame(izq)
+        cont.pack(fill="both", expand=True, pady=6)
+        self.tree_m = ttk.Treeview(cont, columns=("cod", "titulo"), show="headings", selectmode="browse")
+        self.tree_m.heading("cod", text=E("Documento EPEN"))
+        self.tree_m.heading("titulo", text="Título")
+        self.tree_m.column("cod", width=170, anchor="w")
+        self.tree_m.column("titulo", width=300, anchor="w")
+        sb = ttk.Scrollbar(cont, orient="vertical", command=self.tree_m.yview)
+        self.tree_m.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.tree_m.pack(fill="both", expand=True)
+        self._tags(self.tree_m)
+        self.tree_m.bind("<<TreeviewSelect>>", self._sel_modificar)
+        self._leyenda(izq)
+
+        der = ttk.Frame(pw)
+        pw.add(der, weight=5)
+        ttk.Label(der, text="2. Actualizá el estado", style="Big.TLabel").pack(anchor="w")
+        self.lbl_doc_m = ttk.Label(der, text="(elegí un documento de la lista)", wraplength=800,
+                                   font=(FUENTE, 10, "bold"))
+        self.lbl_doc_m.pack(anchor="w", pady=(2, 6))
+
+        # botones fijos abajo: siempre visibles aunque el formulario sea alto
+        bt = ttk.Frame(der)
+        bt.pack(side="bottom", fill="x", pady=8)
+        ttk.Button(bt, text="💾  Guardar cambios", style="Accent.TButton", command=self.guardar).pack(side="left")
+        ttk.Button(bt, text="↩ Deshacer", command=self._cargar_form).pack(side="left", padx=8)
+        self.lbl_ok = ttk.Label(bt, text="", foreground="#1E8E5A", font=(FUENTE, 10, "bold"))
+        self.lbl_ok.pack(side="left", padx=10)
+        ttk.Button(bt, text="🗑 Eliminar documento", style="Danger.TButton", command=self.eliminar).pack(side="right")
+
+        # --- revisiones
+        self.rv = {k: tk.StringVar() for k in ("rev_grupo", "rev_cliente", "rev_epen")}
+        rev = ttk.LabelFrame(der, text="  Revisión emitida  ")
+        rev.pack(fill="x", pady=4)
+        for i, (k, t, ref) in enumerate([("rev_grupo", "Grupo Oeste", "ambos"),
+                                         ("rev_cliente", "Cliente", "cliente"),
+                                         ("rev_epen", E("EPEN"), "epen")]):
+            fr = ttk.Frame(rev)
+            fr.grid(row=0, column=i, padx=12, pady=8, sticky="w")
+            ttk.Label(fr, text=t, style="Hint.TLabel").pack(anchor="w")
+            row = ttk.Frame(fr)
+            row.pack(anchor="w")
+            ttk.Combobox(row, textvariable=self.rv[k], values=REVS, width=5,
+                         font=(FUENTE, 12, "bold")).pack(side="left")
+            ttk.Button(row, text="Subir ▶", width=8,
+                       command=lambda k=k, ref=ref: self.subir_rev(k, ref)).pack(side="left", padx=6)
+        ttk.Label(rev, style="Hint.TLabel", justify="left", text=(
+            "Secuencia:  A → B → C …  (mientras tiene observaciones)  →  al quedar APROBADO pasa a  0  →  1 → 2 …\n"
+            "«Subir» aplica esa regla según el estado cargado más abajo. También podés escribir la revisión a mano.")
+                  ).grid(row=1, column=0, columnspan=3, sticky="w", padx=12, pady=(0, 8))
+
+        # --- entrega y estados
+        self.v_entregado = tk.BooleanVar()
+        self.ev = {k: tk.StringVar() for k in ("estado_cliente", "estado_epen", "inf_cliente", "inf_epen")}
+        est = ttk.LabelFrame(der, text="  Entrega y estado  ")
+        est.pack(fill="x", pady=4)
+        ttk.Checkbutton(est, text="Documento entregado", variable=self.v_entregado,
+                        command=self._al_entregar).grid(
+            row=0, column=0, columnspan=4, sticky="w", padx=12, pady=(8, 2))
+        for col, txt in enumerate(["Estado del cliente", "N° de informe", E("Estado de EPEN"), "N° de informe"]):
+            ttk.Label(est, text=txt, style="Hint.TLabel").grid(row=1, column=col, sticky="w",
+                                                                padx=12 if col in (0, 2) else 0)
+        ttk.Combobox(est, textvariable=self.ev["estado_cliente"], values=ESTADOS, width=30).grid(
+            row=2, column=0, padx=12, pady=(0, 8), sticky="w")
+        ttk.Entry(est, textvariable=self.ev["inf_cliente"], width=8).grid(row=2, column=1, sticky="w", pady=(0, 8))
+        ttk.Combobox(est, textvariable=self.ev["estado_epen"], values=ESTADOS, width=30).grid(
+            row=2, column=2, padx=12, pady=(0, 8), sticky="w")
+        ttk.Entry(est, textvariable=self.ev["inf_epen"], width=8).grid(row=2, column=3, sticky="w", pady=(0, 8))
+
+        # --- fechas para los KPI
+        self.fv = {k: tk.StringVar() for k in ("fecha_limite_go", "fecha_real", "transmittal", "ciclo_rev",
+                                               "fecha_devolucion", "fecha_reenvio")}
+        kp = ttk.LabelFrame(der, text="  Fechas para los KPI  ")
+        kp.pack(fill="x", pady=4)
+        for col, (k, t, w) in enumerate([("fecha_limite_go", "Fecha límite (cronograma)", 14),
+                                         ("fecha_real", "Fecha real de entrega", 14),
+                                         ("transmittal", "Transmittal (ej.: Envío 4)", 18)]):
+            fr = ttk.Frame(kp)
+            fr.grid(row=0, column=col, padx=12, pady=(8, 2), sticky="w")
+            ttk.Label(fr, text=t, style="Hint.TLabel").pack(anchor="w")
+            ttk.Entry(fr, textvariable=self.fv[k], width=w).pack(anchor="w")
+        ttk.Label(kp, text="Corrección: el documento volvió con DPC", font=(FUENTE, 9, "bold"),
+                  foreground=AZUL_OSC).grid(row=1, column=0, columnspan=3, sticky="w", padx=12, pady=(8, 0))
+        fr = ttk.Frame(kp)
+        fr.grid(row=2, column=0, padx=12, pady=(0, 2), sticky="w")
+        ttk.Label(fr, text="Revisión devuelta", style="Hint.TLabel").pack(anchor="w")
+        self.cb_ciclo = ttk.Combobox(fr, textvariable=self.fv["ciclo_rev"], width=8)
+        self.cb_ciclo.pack(anchor="w")
+        self.cb_ciclo.bind("<<ComboboxSelected>>", lambda _e: self._cargar_ciclo())
+        for col, (k, t) in enumerate([("fecha_devolucion", "Fecha de devolución"), ("fecha_reenvio", "Fecha de reenvío")], 1):
+            fr = ttk.Frame(kp)
+            fr.grid(row=2, column=col, padx=12, pady=(0, 2), sticky="w")
+            ttk.Label(fr, text=t, style="Hint.TLabel").pack(anchor="w")
+            ttk.Entry(fr, textvariable=self.fv[k], width=14).pack(anchor="w")
+        ttk.Label(kp, style="Hint.TLabel", justify="left", text=(
+            "Formato dd/mm/aaaa. Cumplimiento de entrega = fecha límite contra fecha real; respuesta a correcciones = días entre "
+            "la devolución y el reenvío.\nLa «Revisión devuelta» es la que volvió con DPC (ej.: A); al reenviarla corregida "
+            "(B) completás la fecha de reenvío."), wraplength=760).grid(row=3, column=0, columnspan=3, sticky="w", padx=12, pady=(2, 8))
+
+        # --- comentarios
+        otros = ttk.LabelFrame(der, text="  Comentarios  ")
+        otros.pack(fill="x", pady=4)
+        self.txt_com = tk.Text(otros, height=2, wrap="word", font=(FUENTE, 10), relief="solid", bd=1)
+        self.txt_com.pack(fill="x", padx=12, pady=10)
+
+
+    def _llenar_lista_mod(self):
+        if not hasattr(self, "tree_m"):
+            return
+        self.tree_m.delete(*self.tree_m.get_children())
+        for d in db.buscar(self.con, self.v_buscar_m.get(), self.v_proy.get().strip()):
+            self.tree_m.insert("", "end", iid=str(d["id"]), tags=(clase_doc(d),),
+                               values=(d["cod_epen"] or d["cod_cliente"], d["titulo"]))
+        if self.sel_id and self.tree_m.exists(str(self.sel_id)):
+            self.tree_m.selection_set(str(self.sel_id))
+
+    def _sel_modificar(self, _=None):
+        s = self.tree_m.selection()
+        if s and int(s[0]) != self.sel_id:
+            self.sel_id = int(s[0])
+        if s:
+            self._cargar_form()
+
+    def _cambio_tab(self, _=None):
+        if self.nb.select() == str(self.tab_mod):
+            self._llenar_lista_mod()
+            if self.sel_id and self.tree_m.exists(str(self.sel_id)):
+                self.tree_m.selection_set(str(self.sel_id))
+                self.tree_m.see(str(self.sel_id))
+                self._cargar_form()
+        elif self.nb.select() == str(self.tab_cons):
+            self._llenar_consulta()
+        elif self.nb.select() == str(self.tab_dash):
+            self._llenar_dashboard()
+        elif self.nb.select() == str(self.tab_kpi):
+            self._llenar_kpi()
+
+    def _cargar_form(self):
+        d = db.get_doc(self.con, self.sel_id) if self.sel_id else None
+        if not d:
+            return
+        n = self.n_actual()
+        self.lbl_doc_m.config(text=f"{d['cod_epen'] or d['cod_cliente']}  —  {d['titulo']}"
+                                   f"      (Revisión N°{n} de la lista)")
+        for k in self.rv:
+            self.rv[k].set(d[k])
+        self.v_entregado.set(bool(d["entregado"]))
+        for k, ki in (("estado_cliente", "inf_cliente"), ("estado_epen", "inf_epen")):
+            base, inf = db.partir_estado(d[k])
+            self.ev[k].set(base)
+            self.ev[ki].set(inf)
+        self.txt_com.delete("1.0", "end")
+        self.txt_com.insert("1.0", d["comentarios"])
+        self.fv["fecha_limite_go"].set(d["fecha_limite_go"])
+        self.fv["fecha_real"].set(d["fecha_real"])
+        self.fv["transmittal"].set(d["transmittal"])
+        revs = [c["rev"] for c in db.ciclos_doc(self.con, d["id"])]
+        if "dpc" in db._norm(d["estado_epen"]) and d["rev_epen"] and d["rev_epen"] not in revs:
+            revs.append(d["rev_epen"])  # devuelto ahora con DPC: todavía no tiene fechas cargadas
+        self.cb_ciclo["values"] = revs
+        self.fv["ciclo_rev"].set(d["rev_epen"] if d["rev_epen"] in revs else (revs[-1] if revs else ""))
+        self._cargar_ciclo()
+        self.lbl_ok.config(text="")
+
+    def _cargar_ciclo(self):
+        c = db.ciclo(self.con, self.sel_id, self.fv["ciclo_rev"].get()) if self.sel_id else None
+        self.fv["fecha_devolucion"].set(c["fecha_devolucion"] if c else "")
+        self.fv["fecha_reenvio"].set(c["fecha_reenvio"] if c else "")
+
+    def _al_entregar(self):
+        """Al marcar «entregado» sin fecha real, propone la de hoy (se puede cambiar)."""
+        if self.v_entregado.get() and not self.fv["fecha_real"].get().strip():
+            self.fv["fecha_real"].set(datetime.now().strftime("%d/%m/%Y"))
+
+    def _estado_ref(self, ref):
+        cli = db.juntar_estado(self.ev["estado_cliente"].get(), self.ev["inf_cliente"].get())
+        epen = db.juntar_estado(self.ev["estado_epen"].get(), self.ev["inf_epen"].get())
+        return {"cliente": cli or epen, "epen": epen or cli, "ambos": epen or cli}[ref]
+
+    def subir_rev(self, campo, ref):
+        if self.sel_id is None:
+            return
+        actual = self.rv[campo].get().strip()
+        if actual and not db.rev_valida(actual):
+            messagebox.showwarning("Revisión", "La revisión debe ser una letra (A, B…) o un número (0, 1…).")
+            return
+        self.rv[campo].set(db.siguiente_rev(actual, self._estado_ref(ref)))
+
+    def guardar(self):
+        if not self._admin():
+            return
+        if self.sel_id is None:
+            messagebox.showinfo("Guardar", "Elegí primero un documento de la lista.")
+            return
+        datos = {k: v.get().strip().upper() for k, v in self.rv.items()}
+        if not all(db.rev_valida(v) for v in datos.values()):
+            messagebox.showwarning("Revisión", "Las revisiones deben ser una letra (A, B…) o un número (0, 1…).")
+            return
+        datos["estado_cliente"] = db.juntar_estado(self.ev["estado_cliente"].get(), self.ev["inf_cliente"].get())
+        datos["estado_epen"] = db.juntar_estado(self.ev["estado_epen"].get(), self.ev["inf_epen"].get())
+        datos["entregado"] = int(self.v_entregado.get())
+        datos["comentarios"] = self.txt_com.get("1.0", "end").strip()
+        try:
+            datos["fecha_limite_go"] = db.norm_fecha(self.fv["fecha_limite_go"].get())
+            datos["fecha_real"] = db.norm_fecha(self.fv["fecha_real"].get())
+            dev, rei = db.norm_fecha(self.fv["fecha_devolucion"].get()), db.norm_fecha(self.fv["fecha_reenvio"].get())
+        except ValueError as e:
+            messagebox.showwarning("Fecha", str(e))
+            return
+        datos["transmittal"] = self.fv["transmittal"].get().strip()
+        rev_c = self.fv["ciclo_rev"].get().strip().upper()
+        if (dev or rei) and not rev_c:
+            messagebox.showwarning("Corrección", "Elegí la revisión devuelta para guardar las fechas de la corrección.")
+            return
+        db.actualizar(self.con, self.sel_id, datos)
+        if rev_c:
+            db.guardar_ciclo(self.con, self.sel_id, rev_c, dev, rei)
+        self.cb_cli["values"] = db.clientes(self.con)
+        self.refrescar()
+        self._cargar_form()
+        extra = self.guardar_en_excel()
+        self.lbl_ok.config(text=f"✔ Guardado {datetime.now():%H:%M} {extra}")
+
+    def eliminar(self):
+        if not self._admin():
+            return
+        if self.sel_id is None:
+            return
+        if messagebox.askyesno("Eliminar", "¿Eliminar este documento y todo su historial?\nNo se puede deshacer."):
+            db.eliminar(self.con, self.sel_id)
+            self.sel_id = None
+            self.lbl_doc_m.config(text="(elegí un documento de la lista)")
+            self.refrescar()
+            self._limpiar_ficha()
+
+
+if __name__ == "__main__":
+    if "--reset-usuarios" in sys.argv:  # recuperar el acceso si se olvidó la contraseña del administrador
+        c = db.conectar()
+        db.borrar_usuarios(c)
+        db.asegurar_usuarios_iniciales(c)
+        print("Usuarios restablecidos: Admin / usuario1 con sus contraseñas iniciales.")
+        sys.exit()
+    if "--probar-pdf" in sys.argv:  # diagnóstico: lee un informe y deja el resultado en «probar_pdf.txt»
+        import traceback
+        destino = os.path.join(os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__),
+                               "probar_pdf.txt")
+        try:
+            inf = informe.leer_informe(sys.argv[sys.argv.index("--probar-pdf") + 1])
+            texto = f"OK: informe {inf['numero']} ({inf['fecha']}), {len(inf['filas'])} filas\n{inf['filas']}"
+        except Exception:  # noqa: BLE001
+            texto = traceback.format_exc()
+        open(destino, "w", encoding="utf-8").write(texto)
+        sys.exit()
+    app = App()
+    if app.ok:
+        app.mainloop()
+
+##### FIN DE app.py #####
