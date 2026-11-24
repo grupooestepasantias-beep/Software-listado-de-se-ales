@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>Play</AssemblyName>
+    <RootNamespace>Play.Panel</RootNamespace>
+    <Version>0.1.0</Version>
+    <SatelliteResourceLanguages>es</SatelliteResourceLanguages>
+    <!-- El panel queda abierto todo el día: se prioriza consumir poca memoria. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>false</TieredPGO>
+    <!-- NO activar InvariantGlobalization: WPF crea una CultureInfo con el idioma del teclado (p. ej. es-AR) y,
+         en modo invariante, falla en cada tecla: ningún cuadro de texto ni PIN acepta escritura. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Play.Client\Play.Client.csproj" />
+  </ItemGroup>
+
+</Project>

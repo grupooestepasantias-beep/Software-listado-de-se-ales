@@ -1,0 +1,18 @@
+# Compilación y herramientas
+bin/
+obj/
+dist/
+.vs/
+*.user
+*.suo
+TestResults/
+
+# Datos y archivos privados: nunca al repositorio
+*.db
+*.db-shm
+*.db-wal
+datos/
+*.xlsx
+*.log
+docs/DATOS_INICIALES.md
+.claude/

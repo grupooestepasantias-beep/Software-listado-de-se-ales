@@ -1,0 +1,206 @@
+﻿<Window x:Class="Play.Panel.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Play" WindowStyle="None" ResizeMode="NoResize" SizeToContent="WidthAndHeight"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False" WindowStartupLocation="Manual"
+        Background="#202225" Foreground="White" FontFamily="Segoe UI" FontSize="12" UseLayoutRounding="True">
+
+    <Window.Resources>
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="Black"/>
+        </Style>
+        <Style TargetType="PasswordBox">
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="MaxLength" Value="4"/>
+        </Style>
+        <Style x:Key="Etiqueta" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#B0B0B0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Width" Value="52"/>
+        </Style>
+        <Style x:Key="Chico" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style x:Key="Plano" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#3A3D42"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fondo" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fondo" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Fondo" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Window.ContextMenu>
+        <ContextMenu>
+            <MenuItem x:Name="MnuResumen" Header="Mi resumen de horas…" Click="MnuResumen_Click"/>
+            <MenuItem x:Name="MnuAvisar" Header="Avisar que terminé una subtarea…" Click="MnuAvisar_Click"/>
+            <MenuItem x:Name="MnuCambiarUsuario" Header="Cambiar de usuario" Click="MnuCambiarUsuario_Click"/>
+            <Separator/>
+            <MenuItem x:Name="MnuInicio" Header="Iniciar con Windows" IsCheckable="True" Click="MnuInicio_Click"/>
+            <MenuItem x:Name="MnuServidor" Header="Servidor…" Click="MnuServidor_Click"/>
+            <Separator/>
+            <MenuItem x:Name="MnuSalir" Header="Salir" Click="MnuSalir_Click"/>
+        </ContextMenu>
+    </Window.ContextMenu>
+
+    <Border x:Name="Marco" BorderThickness="2" BorderBrush="#808080" MouseLeftButtonDown="Marco_MouseLeftButtonDown">
+        <Grid>
+            <!-- ===== Vista expandida ===== -->
+            <StackPanel x:Name="Expandido" Width="224" Margin="8,6,8,6">
+
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Área" Style="{StaticResource Etiqueta}"/>
+                    <ComboBox x:Name="CmbArea" Grid.Column="1" SelectionChanged="CmbArea_SelectionChanged"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Usuario" Style="{StaticResource Etiqueta}"/>
+                    <ComboBox x:Name="CmbUsuario" Grid.Column="1" DisplayMemberPath="Nombre" SelectionChanged="CmbUsuario_SelectionChanged"/>
+                </Grid>
+
+                <!-- PIN -->
+                <StackPanel x:Name="PanelPin" Visibility="Collapsed" Margin="0,0,0,4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="PIN" Style="{StaticResource Etiqueta}"/>
+                        <PasswordBox x:Name="TxtPin" Grid.Column="1" PreviewTextInput="Pin_PreviewTextInput" PasswordChanged="TxtPin_PasswordChanged"/>
+                        <Button x:Name="BtnEntrar" Grid.Column="2" Content="Entrar" Style="{StaticResource Plano}" Margin="4,0,0,0" Padding="8,0" Height="22" Click="BtnEntrar_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="TxtErrorPin" Style="{StaticResource Chico}" Foreground="#FF7070" Visibility="Collapsed"/>
+                </StackPanel>
+
+                <!-- PIN nuevo (primer uso) -->
+                <StackPanel x:Name="PanelNuevoPin" Visibility="Collapsed" Margin="0,0,0,4">
+                    <TextBlock Text="Primer ingreso: elegí tu PIN (4 números)." Style="{StaticResource Chico}" Foreground="#F0A030" Margin="0,0,0,4"/>
+                    <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="Nuevo" Style="{StaticResource Etiqueta}"/>
+                        <PasswordBox x:Name="TxtPinNuevo" Grid.Column="1" PreviewTextInput="Pin_PreviewTextInput"/>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="Repetir" Style="{StaticResource Etiqueta}"/>
+                        <PasswordBox x:Name="TxtPinNuevo2" Grid.Column="1" PreviewTextInput="Pin_PreviewTextInput"/>
+                        <Button Grid.Column="2" Content="Guardar" Style="{StaticResource Plano}" Margin="4,0,0,0" Padding="8,0" Height="22" Click="BtnGuardarPin_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="TxtErrorNuevo" Style="{StaticResource Chico}" Foreground="#FF7070" Visibility="Collapsed"/>
+                </StackPanel>
+
+                <!-- Obra -->
+                <Grid x:Name="FilaObra" Margin="0,0,0,6" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Obra" Style="{StaticResource Etiqueta}"/>
+                    <ComboBox x:Name="CmbObra" Grid.Column="1" DisplayMemberPath="Nombre" SelectionChanged="CmbObra_SelectionChanged"/>
+                </Grid>
+
+                <!-- Subtarea: solo aparece si la obra elegida tiene subtareas (entonces hay que elegir una) -->
+                <Grid x:Name="FilaSubtarea" Margin="0,0,0,6" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Tarea" Style="{StaticResource Etiqueta}"/>
+                    <ComboBox x:Name="CmbSubtarea" Grid.Column="1" DisplayMemberPath="Nombre" SelectionChanged="CmbSubtarea_SelectionChanged"/>
+                </Grid>
+
+                <!-- Horas de Taller: en lugar de Obra/Play, el personal de Taller carga las horas de hoy o de ayer -->
+                <StackPanel x:Name="PanelHoras" Visibility="Collapsed" Margin="0,0,0,4">
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Día" Style="{StaticResource Etiqueta}"/>
+                        <ComboBox x:Name="CmbDia" Grid.Column="1" DisplayMemberPath="Texto" SelectionChanged="CmbDia_SelectionChanged"/>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Horas" Style="{StaticResource Etiqueta}"/>
+                        <TextBox x:Name="TxtHoras" Grid.Column="1" Height="22" Foreground="Black" VerticalContentAlignment="Center" MaxLength="8"
+                                 ToolTip="Por ejemplo 8, 7,5 o 7:30" KeyDown="TxtHoras_KeyDown"/>
+                        <Button x:Name="BtnGuardarHoras" Grid.Column="2" Content="Guardar" Style="{StaticResource Plano}" Margin="4,0,0,0" Padding="8,0" Height="22" Click="BtnGuardarHoras_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="TxtHorasInfo" Style="{StaticResource Chico}" Foreground="#A0A0A0"/>
+                    <Button x:Name="BtnQuitarHoras" Content="Quitar estas horas" Style="{StaticResource Plano}" Height="20" Margin="0,4,0,0" Visibility="Collapsed" Click="BtnQuitarHoras_Click"/>
+                </StackPanel>
+
+                <!-- Casilla: «terminé esta tarea» (tildar avisa al administrador; destildar retira el aviso) -->
+                <CheckBox x:Name="ChkTerminada" Content="Tarea terminada" Margin="52,0,0,6" Foreground="White" Visibility="Collapsed"
+                          Click="ChkTerminada_Click" ToolTip="Tildala cuando termines esta tarea: le avisa al administrador"/>
+
+                <!-- Play/Pause + tiempo + estado -->
+                <Grid x:Name="FilaControl" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="BtnPlay" Width="44" Height="30" Style="{StaticResource Plano}" Background="#2E9E4F" Click="BtnPlay_Click" ToolTip="Play / Pause">
+                        <Path x:Name="IconoPlay" Fill="White" Stretch="None" Data="M0,0 L11,7 L0,14 Z"/>
+                    </Button>
+                    <TextBlock x:Name="TxtTiempo" Grid.Column="1" Text="00:00:00" FontFamily="Consolas" FontSize="21" FontWeight="SemiBold"
+                               VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    <Ellipse x:Name="Punto" Grid.Column="2" Width="12" Height="12" Fill="#808080" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <Button x:Name="BtnContraer" Grid.Column="3" Width="22" Height="22" Style="{StaticResource Plano}" Content="–" FontWeight="Bold" Click="BtnContraer_Click" ToolTip="Contraer"/>
+                </Grid>
+
+                <TextBlock x:Name="TxtResumen" Style="{StaticResource Chico}" Foreground="#A0A0A0" Visibility="Collapsed"/>
+                <TextBlock x:Name="TxtConexion" Style="{StaticResource Chico}" Foreground="#F0A030" Visibility="Collapsed"/>
+                <TextBlock x:Name="TxtAviso" Style="{StaticResource Chico}" Foreground="#FFD27F" Visibility="Collapsed"/>
+            </StackPanel>
+
+            <!-- ===== Vista contraída ===== -->
+            <StackPanel x:Name="Contraido" Orientation="Horizontal" Margin="7,3,4,3" Visibility="Collapsed">
+                <Ellipse x:Name="PuntoC" Width="10" Height="10" Fill="#808080" VerticalAlignment="Center"/>
+                <TextBlock x:Name="TxtTiempoC" Text="00:00:00" FontFamily="Consolas" FontSize="13" FontWeight="SemiBold" Margin="7,0,7,0" VerticalAlignment="Center"/>
+                <Button Width="18" Height="18" Style="{StaticResource Plano}" Content="+" FontWeight="Bold" Click="BtnExpandir_Click" ToolTip="Expandir"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>PlayAdmin</AssemblyName>
+    <RootNamespace>Play.Admin</RootNamespace>
+    <Version>0.1.0</Version>
+    <SatelliteResourceLanguages>es</SatelliteResourceLanguages>
+    <!-- NO activar InvariantGlobalization: rompe la escritura en los cuadros de texto de WPF (ver docs/PANEL.md). -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Play.Client\Play.Client.csproj" />
+  </ItemGroup>
+
+</Project>
